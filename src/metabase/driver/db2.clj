@@ -1,4 +1,5 @@
 (ns metabase.driver.db2
+  "Driver for DB2 databases."
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
             [honeysql.core :as hsql]
@@ -20,7 +21,6 @@
            java.util.Date))
 
 (driver/register! :db2, :parent :sql-jdbc)
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
@@ -52,30 +52,41 @@
     #".*" ; default
     message))
 
-(defmethod driver.common/current-db-time-date-formatters :db2 [_]     ;; "2019-09-14T18:03:20.679658000-00:00"
-;;  (println "current-db-time-date-formatters")
+(defmethod driver/connection-properties :db2 [_]
+  (ssh/with-tunnel-config
+    [driver.common/default-host-details
+     (assoc driver.common/default-port-details :default 50000)
+     driver.common/default-dbname-details
+     driver.common/default-user-details
+     driver.common/default-password-details
+     driver.common/default-ssl-details]))
+
+;; needs improvements
+(defmethod driver.common/current-db-time-date-formatters :db2 [_]
   (mapcat
    driver.common/create-db-time-formatters
    ["yyyy-MM-dd HH:mm:ss"
-    "yyyy-MM-dd HH:mm:ss.SSS"
-    "yyyy-MM-dd'T'HH:mm:ss.SSS"
-    "yyyy-MM-dd HH:mm:ss.SSSZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-    "yyyy-MM-dd HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ"]))
+    "yyyy-MM-dd HH24:mm:ss"
+    "yyyy-MM-dd HH:mm:ss.SSS"           ;;
+    "yyyy-MM-dd'T'HH:mm:ss.SSS"         ;;
+    "yyyy-MM-dd HH24:mm:ss.SSSSS"
+    "yyyy-MM-dd HH:mm:ss.SSSSS"
+    "yyyy-MM-dd'T'HH:mm:ss.SSSSS"       ;;
+    "yyyy-MM-dd HH:mm:ss.SSSZ"          ;;
+    "yyyy-MM-dd'T'HH:mm:ss.SSSZ"        ;;
+    "yyyy-MM-dd HH:mm:ss.SSSZZ"         ;; 
+    "yyyy-MM-dd'T'HH:mm:ss.SSSZZ"       ;;
+    "yyyy-MM-dd HH:mm:ss.SSSSSSZZ"      ;;
+    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"    ;;
+    "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"   ;;
+    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ" ;;
+    ]))
 
 (defmethod driver.common/current-db-time-native-query :db2 [_]
-;;  (println "current-db-time-native-query")
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1")       ;; "SELECT CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1")
+  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH24:mm:ss') FROM SYSIBM.SYSDUMMY1") 
 
 (defmethod driver/current-db-time :db2 [& args]
-;;  (println "current-db-time")
   (apply driver.common/current-db-time args))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                           metabase.driver.sql impls                                            |
@@ -83,10 +94,10 @@
 
 (defn- date-format [format-str expr] (hsql/call :varchar_format expr (hx/literal format-str)))
 (defn- str-to-date [format-str expr] (hsql/call :to_date expr (hx/literal format-str)))
+(defn- trunc-with-format [format-str expr](str-to-date format-str (date-format format-str expr)))
 
-(defn- trunc-with-format [format-str expr]
-  (str-to-date format-str (date-format format-str expr)))
-
+;; Wrap a HoneySQL datetime EXPRession in appropriate forms to cast/bucket it as UNIT.
+;; See [this page](https://www.ibm.com/developerworks/data/library/techarticle/0211yip/0211yip3.html) for details on the functions we're using.
 (defmethod sql.qp/date [:db2 :default]        [_ _ expr] expr)
 (defmethod sql.qp/date [:db2 :minute]         [_ _ expr] (trunc-with-format "YYYY-MM-DD HH24:MI" expr))
 (defmethod sql.qp/date [:db2 :minute-of-hour] [_ _ expr] (hsql/call :minute expr))
@@ -99,25 +110,22 @@
 (defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (hsql/call :month expr))
 (defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx/year expr)) (int ((hx/- (hx/* (hx/quarter expr) 3) 2)))))))
 (defmethod sql.qp/date [:db2 :year]           [_ _ expr] (hsql/call :year expr))
-
 (defmethod sql.qp/date [:db2 :day-of-year] [driver _ expr] (hsql/call :dayofyear expr))
-
 (defmethod sql.qp/date [:db2 :week-of-year] [_ _ expr] (hsql/call :week expr))
-
 (defmethod sql.qp/date [:db2 :quarter-of-year] [driver _ expr] (hsql/call :quarter expr))
-
 (defmethod sql.qp/date [:db2 :day-of-week] [driver _ expr] (hsql/call :dayofweek expr))
 
 (defmethod driver/date-add :db2 [_ dt amount unit]
   (hx/+ (hx/->timestamp dt) (case unit
-                              :second  (hsql/raw (format "current timestamp + %d seconds" (int amount)))
-                              :minute  (hsql/raw (format "current timestamp + %d minutes" (int amount)))
-                              :hour    (hsql/raw (format "current timestamp + %d hours" (int amount)))
-                              :day     (hsql/raw (format "current timestamp + %d days" (int amount)))
-                              :week    (hsql/raw (format "current timestamp + %d days" (int (hx/* amount (hsql/raw 7)))))
-                              :month   (hsql/raw (format "current timestamp + %d months" (int amount)))
-                              :quarter (hsql/raw (format "current timestamp + %d months" (int (hx/* amount (hsql/raw 3)))))
-                              :year    (hsql/raw (format "current timestamp + %d years" (int amount))))))
+    :second  (hsql/raw (format "%d seconds" (int amount)))
+    :minute  (hsql/raw (format "%d minutes" (int amount)))
+    :hour    (hsql/raw (format "%d hours" (int amount)))
+    :day     (hsql/raw (format "%d days" (int amount)))
+    :week    (hsql/raw (format "%d days" (int (hx/* amount (hsql/raw 7)))))
+    :month   (hsql/raw (format "%d months" (int amount)))
+    :quarter (hsql/raw (format "%d months" (int (hx/* amount (hsql/raw 3)))))
+    :year    (hsql/raw (format "%d years" (int amount)))
+  )))
 
 (defmethod sql.qp/unix-timestamp->timestamp [:db2 :seconds] [_ _ expr]
   (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int expr))))
@@ -126,9 +134,32 @@
   (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int (hx// expr 1000)))))))
 
 (def ^:private now (hsql/raw "current timestamp"))
-
 (defmethod sql.qp/current-datetime-fn :db2 [_] now)
 
+;; Use LIMIT OFFSET support DB2 v9.7 https://www.ibm.com/developerworks/community/blogs/SQLTips4DB2LUW/entry/limit_offset?lang=en
+(defmethod sql.qp/apply-top-level-clause [:db2 :limit]
+  [_ _ honeysql-query {value :limit}]
+  {:select [:*]
+   ;; if `honeysql-query` doesn't have a `SELECT` clause yet (which might be the case when using a source query) fall
+   ;; back to including a `SELECT *` just to make sure a valid query is produced
+   :from   [(-> (merge {:select [:*]}
+                       honeysql-query)
+                (update :select sql.u/select-clause-deduplicate-aliases))]
+   :fetch  [(hsql/raw (format "FIRST %d ROWS ONLY" value))]})
+
+(defmethod sql.qp/apply-top-level-clause [:db2 :page]
+  [driver _ honeysql-query {{:keys [items page]} :page}]
+  (let [offset (* (dec page) items)]
+    (if (zero? offset)
+      ;; if there's no offset we can use the single-nesting implementation for `apply-limit`
+      (sql.qp/apply-top-level-clause driver :limit honeysql-query {:limit items})
+      ;; if we need to do an offset we have to do double-nesting
+      {:select [:*]
+       :from   [{:select [:tmp.* [(hsql/raw "ROW_NUMBER() OVER()") :rn]]
+                 :from   [[(merge {:select [:*]}
+                                  honeysql-query)
+                           :tmp]]}]
+       :where  [(hsql/raw (format "rn BETWEEN %d AND %d" offset (+ offset items)))]})))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
@@ -138,18 +169,20 @@
   [_ {:keys [host port dbname]
       :or   {host "localhost", port 3386, dbname ""}
       :as   details}]
-  (merge {:classname "com.ibm.as400.access.AS400JDBCDriver"   ;; must be in classpath
-          :subprotocol "as400"
-          :subname (str "//" host ":" port "/" dbname)}                    ;; :subname (str "//" host "/" dbname)}   (str "//" host ":" port "/" (or dbname db))}
+  (merge {:classname "com.ibm.db2.jcc.DB2Driver"
+          :subprotocol "db2"
+          :subname (str "//" host ":" port "/" dbname)}
          (dissoc details :host :port :dbname)))
 
 (defmethod driver/can-connect? :db2 [driver details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel details))]
     (= 1 (first (vals (first (jdbc/query connection ["SELECT 1 FROM SYSIBM.SYSDUMMY1"])))))))
 
+;; Mappings for DB2 types to Metabase types.
+;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
 (defmethod sql-jdbc.sync/database-type->base-type :db2 [_ database-type]
-  ({:BIGINT       :type/BigInteger    ;; Mappings for DB2 types to Metabase types.
-    :BINARY       :type/*             ;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
+  ({:BIGINT       :type/BigInteger    
+    :BINARY       :type/*             
     :BLOB         :type/*
     :BOOLEAN      :type/Boolean
     :CHAR         :type/Text
@@ -194,11 +227,5 @@
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
 
-;; instead of returning a CLOB object, return the String. (#9026)
-;; (defmethod sql-jdbc.execute/read-column [:db2 Types/CLOB] [_ _, ^ResultSet resultset, _, ^Integer i]
-;;   (println "XXXXX read-column: " i)
-;;   (.getString resultset i))
-
-;; (defmethod unprepare/unprepare-value [:db2 Date] [_ value]
-;;   (println "XXXXX unprepare/unprepare-value: " value)
-;;   (format "timestamp '%s'" (du/format-date "yyyy-MM-dd hh:mm:ss.SSS ZZ" value)))
+;;(defmethod unprepare/unprepare-value [:db2 Date] [_ value]
+;;  (format "current timestamp '%s'" (du/format-date "yyy-MM-dd HH24:mm:ss.SSSSS" value)))
