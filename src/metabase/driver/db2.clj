@@ -2,15 +2,21 @@
   "Driver for DB2 databases."
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
-            [honeysql.core :as hsql]
+            [honeysql
+             [core :as hsql]
+             [format :as hformat]]
             [metabase.driver :as driver]
             [metabase.driver.common :as driver.common]
+            [metabase.query-processor
+             [store :as qp.store]
+             [util :as qputil]]
             [metabase.driver.sql
              [query-processor :as sql.qp]
              [util :as sql.u]]
             [metabase.driver.sql-jdbc
              [connection :as sql-jdbc.conn]
              [execute :as sql-jdbc.execute]
+             [common :as sql-jdbc.common]
              [sync :as sql-jdbc.sync]]
             [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.util
@@ -18,7 +24,9 @@
              [honeysql-extensions :as hx]
              [ssh :as ssh]])
   (:import [java.sql ResultSet Types]
-           java.util.Date))
+           java.util.Date)
+  (:import java.sql.Time
+           [java.util Date UUID]))
 
 (driver/register! :db2, :parent :sql-jdbc)
 
@@ -52,38 +60,26 @@
     #".*" ; default
     message))
 
+;; Additional options: https://www.ibm.com/support/knowledgecenter/en/SSEPGG_9.7.0/com.ibm.db2.luw.apdv.java.doc/src/tpc/imjcc_r0052038.html
 (defmethod driver/connection-properties :db2 [_]
   (ssh/with-tunnel-config
     [driver.common/default-host-details
-     (assoc driver.common/default-port-details :default 50000)
+     driver.common/default-port-details
      driver.common/default-dbname-details
      driver.common/default-user-details
      driver.common/default-password-details
-     driver.common/default-ssl-details]))
+     driver.common/default-ssl-details
+     driver.common/default-additional-options-details]))
 
-;; needs improvements
+;; Needs improvements and tests
 (defmethod driver.common/current-db-time-date-formatters :db2 [_]
   (mapcat
    driver.common/create-db-time-formatters
-   ["yyyy-MM-dd HH:mm:ss"
-    "yyyy-MM-dd HH24:mm:ss"
-    "yyyy-MM-dd HH:mm:ss.SSS"           ;;
-    "yyyy-MM-dd'T'HH:mm:ss.SSS"         ;;
-    "yyyy-MM-dd HH24:mm:ss.SSSSS"
-    "yyyy-MM-dd HH:mm:ss.SSSSS"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSS"       ;;
-    "yyyy-MM-dd HH:mm:ss.SSSZ"          ;;
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZ"        ;;
-    "yyyy-MM-dd HH:mm:ss.SSSZZ"         ;; 
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZZ"       ;;
-    "yyyy-MM-dd HH:mm:ss.SSSSSSZZ"      ;;
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"    ;;
-    "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"   ;;
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ" ;;
-    ]))
+   ["yyyy-MM-dd HH24:mm:ss"
+    "yyyy-MM-dd HH24:mm:ss.SSSSS"]))
 
 (defmethod driver.common/current-db-time-native-query :db2 [_]
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH24:mm:ss') FROM SYSIBM.SYSDUMMY1") 
+  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH24:mm:ss.SSSSS') FROM SYSIBM.SYSDUMMY1") 
 
 (defmethod driver/current-db-time :db2 [& args]
   (apply driver.common/current-db-time args))
@@ -110,10 +106,10 @@
 (defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (hsql/call :month expr))
 (defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx/year expr)) (int ((hx/- (hx/* (hx/quarter expr) 3) 2)))))))
 (defmethod sql.qp/date [:db2 :year]           [_ _ expr] (hsql/call :year expr))
-(defmethod sql.qp/date [:db2 :day-of-year] [driver _ expr] (hsql/call :dayofyear expr))
-(defmethod sql.qp/date [:db2 :week-of-year] [_ _ expr] (hsql/call :week expr))
+(defmethod sql.qp/date [:db2 :week-of-year]   [_ _ expr] (hsql/call :week expr))
+(defmethod sql.qp/date [:db2 :day-of-week]     [driver _ expr] (hsql/call :dayofweek expr))
+(defmethod sql.qp/date [:db2 :day-of-year]     [driver _ expr] (hsql/call :dayofyear expr))
 (defmethod sql.qp/date [:db2 :quarter-of-year] [driver _ expr] (hsql/call :quarter expr))
-(defmethod sql.qp/date [:db2 :day-of-week] [driver _ expr] (hsql/call :dayofweek expr))
 
 (defmethod driver/date-add :db2 [_ dt amount unit]
   (hx/+ (hx/->timestamp dt) (case unit
@@ -165,14 +161,14 @@
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defmethod sql-jdbc.conn/connection-details->spec :db2
-  [_ {:keys [host port dbname]
-      :or   {host "localhost", port 3386, dbname ""}
-      :as   details}]
-  (merge {:classname "com.ibm.db2.jcc.DB2Driver"
-          :subprotocol "db2"
-          :subname (str "//" host ":" port "/" dbname)}
-         (dissoc details :host :port :dbname)))
+(defmethod sql-jdbc.conn/connection-details->spec :db2 [_ {:keys [host port db dbname]
+                                                           :or   {host "localhost", port 50000, dbname ""}
+                                                           :as   details}]
+  (-> (merge {:classname   "com.ibm.db2.jcc.DB2Driver"
+              :subprotocol "db2"
+              :subname     (str "//" host ":" port "/" dbname )}
+             (dissoc details :host :port :dbname :ssl))
+      (sql-jdbc.common/handle-additional-options details)))
 
 (defmethod driver/can-connect? :db2 [driver details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel details))]
@@ -227,5 +223,4 @@
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
 
-;;(defmethod unprepare/unprepare-value [:db2 Date] [_ value]
-;;  (format "current timestamp '%s'" (du/format-date "yyy-MM-dd HH24:mm:ss.SSSSS" value)))
+
