@@ -143,6 +143,7 @@
 (defmethod sql.qp/current-datetime-fn :db2 [_] now)
 
 ;; Use LIMIT OFFSET support DB2 v9.7 https://www.ibm.com/developerworks/community/blogs/SQLTips4DB2LUW/entry/limit_offset?lang=en
+;; Maybe it could not to be necessary with the use of DB2_COMPATIBILITY_VECTOR
 (defmethod sql.qp/apply-top-level-clause [:db2 :limit]
   [_ _ honeysql-query {value :limit}]
   {:select [:*]
@@ -169,6 +170,7 @@
 
 ;; Filtering with dates causes a -245 error.
 ;; Explicit cast to timestamp when Date function is called to prevent db2 unknown parameter type.
+;; Maybe it could not to be necessary with the use of DB2_DEFERRED_PREPARE_SEMANTICS
 (defmethod sql.qp/->honeysql [:db2 Date]
   [_ date]
   (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
