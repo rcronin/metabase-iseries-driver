@@ -6,7 +6,7 @@ First download Metabase Jar File [here](https://metabase.com/start/other.html)  
 ```bash
 java -jar metabase.jar
 ```
-The `plugins/` directory will be created. Drop the driver in your `plugins/` directory. You can grab it [here](https://github.com/alisonrafael/metabase-db2-driver/target/uberjar/db2.metabase-driver.jar) or build it yourself:
+The `plugins/` directory will be created. Drop the driver in your `plugins/` directory. You can grab it [here](https://github.com/alisonrafael/metabase-db2-driver/releases/download/v1.0.0/db2.metabase-driver.jar) or build it yourself:
 
 ##  Editing the plugin: Prerequisites
 
@@ -52,13 +52,14 @@ Clone the [Metabase repo](https://github.com/metabase/metabase) first if you hav
 
 ### Clone the DB2 Metabase Driver
 
-Clone the [DB2 driver repo](https://github.com/alisonrafael/metabase-db2-driver) inside drivers modules folder `/metabase_source/modules/drivers`
+Clone the [DB2 driver repo](https://github.com/alisonrafael/metabase-db2-driver) inside drivers modules folder `/metabase_source/modules/drivers`.
 
 ### Compile Metabase for building drivers
 ```bash
 cd /path/to/metabase_source
 lein install-for-building-drivers
 ```
+
 ### Compile the DB2 driver
 ```bash
 ./bin/build-driver.sh db2
@@ -69,20 +70,12 @@ lein install-for-building-drivers
 mkdir -p /path/to/metabase/plugins/
 cp /metabase_source/modules/drivers/db2/target/uberjar/db2.metabase-driver.jar /path/to/metabase/plugins/
 ```
+
 ### Run Metabase
 
 ```bash
 jar -jar /path/to/metabase/metabase.jar
 ```
-
-## ISSUES
-* Filter between dates in "custom question" do not work.
-DB error:
-`..."DB2 SQL Error: SQLCODE=-245, SQLSTATE=428F5, SQLERRMC=DATE"...`
-Metabase params:
-`...:query {:source-table 24029, :filter ["and" ["between" ["field-id" 142431] "2018-09-18" "2019-09-18"]]...`
-Generated SQL:
-`...WHERE date(\"SCHEMA\".\"TABLE\".\"DT_COLUMN\") BETWEEN date(?) AND date... :params (#inst "2018-09-18T03:00:00.000000000-00:00" #inst "2019-09-18T03:00:00.000000000-00:00")...`
 
 ## Thanks
 Thanks to everybody here [https://github.com/metabase/metabase/issues/1509](https://github.com/metabase/metabase/issues/1509)

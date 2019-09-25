@@ -2,6 +2,10 @@
   "Driver for DB2 databases."
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
+            [clj-time
+             [coerce :as tcoerce]
+             [core :as t]
+             [format :as time]]
             [honeysql
              [core :as hsql]
              [format :as hformat]]
@@ -22,11 +26,17 @@
             [metabase.util
              [date :as du]
              [honeysql-extensions :as hx]
-             [ssh :as ssh]])
+             [ssh :as ssh]]
+            [metabase.driver.sql :as sql]
+            [schema.core :as s])
   (:import [java.sql ResultSet Types]
            java.util.Date)
   (:import java.sql.Time
-           [java.util Date UUID]))
+           [java.util Date UUID])
+  (:import [java.sql ResultSet Time Timestamp Types]
+           [java.util Calendar Date TimeZone]
+           metabase.util.honeysql_extensions.Literal
+           org.joda.time.format.DateTimeFormatter))
 
 (driver/register! :db2, :parent :sql-jdbc)
 
@@ -75,11 +85,11 @@
 (defmethod driver.common/current-db-time-date-formatters :db2 [_]
   (mapcat
    driver.common/create-db-time-formatters
-   ["yyyy-MM-dd HH24:mm:ss"
-    "yyyy-MM-dd HH24:mm:ss.SSSSS"]))
+   ["yyyy-MM-dd HH:mm:ss"
+    "yyyy-MM-dd HH:mm:ss.SSSSS"]))
 
 (defmethod driver.common/current-db-time-native-query :db2 [_]
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH24:mm:ss.SSSSS') FROM SYSIBM.SYSDUMMY1") 
+  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1") 
 
 (defmethod driver/current-db-time :db2 [& args]
   (apply driver.common/current-db-time args))
@@ -157,6 +167,19 @@
                            :tmp]]}]
        :where  [(hsql/raw (format "rn BETWEEN %d AND %d" offset (+ offset items)))]})))
 
+;; Filtering with dates causes a -245 error.
+;; Explicit cast to timestamp when Date function is called to prevent db2 unknown parameter type.
+(defmethod sql.qp/->honeysql [:db2 Date]
+  [_ date]
+  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
+
+;; The sql.qp/->honeysql entrypoint is used by MBQL, but native queries with field filters have the same issue.
+;; Return a map that will be used in the prepared statement to correctly cast the date.
+(s/defmethod sql/->prepared-substitution [:db2 Date] :- sql/PreparedStatementSubstitution
+  [_ date]
+  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
+
+
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -223,4 +246,7 @@
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
 
+
+(defmethod driver/execute-query :db2 [driver query]
+  ((get-method driver/execute-query :sql-jdbc) driver query))
 
