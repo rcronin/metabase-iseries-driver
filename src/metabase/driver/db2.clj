@@ -175,9 +175,10 @@
 
 ;; The sql.qp/->honeysql entrypoint is used by MBQL, but native queries with field filters have the same issue.
 ;; Return a map that will be used in the prepared statement to correctly cast the date.
-(s/defmethod sql/->prepared-substitution [:db2 Date] :- sql/PreparedStatementSubstitution
-  [_ date]
-  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
+;; Needs correction. You can use mysql.clj as guide.
+;;(s/defmethod sql/->prepared-substitution [:db2 Date] :- sql/PreparedStatementSubstitution
+;;  [_ date]
+;;  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -189,9 +190,9 @@
                                                            :as   details}]
   (-> (merge {:classname   "com.ibm.db2.jcc.DB2Driver"
               :subprotocol "db2"
-              :subname     (str "//" host ":" port "/" dbname )}
+              :subname     (str "//" host ":" port "/" dbname ":" )}
              (dissoc details :host :port :dbname :ssl))
-      (sql-jdbc.common/handle-additional-options details)))
+      (sql-jdbc.common/handle-additional-options details, :seperator-style :semicolon)))
 
 (defmethod driver/can-connect? :db2 [driver details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel details))]
