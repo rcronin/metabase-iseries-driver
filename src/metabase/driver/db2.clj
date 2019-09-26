@@ -248,8 +248,3 @@
 
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
-
-
-(defmethod driver/execute-query :db2 [driver query]
-  ((get-method driver/execute-query :sql-jdbc) driver query))
-
