@@ -79,13 +79,5 @@ cp /metabase_source/modules/drivers/db2/target/uberjar/db2.metabase-driver.jar /
 jar -jar /path/to/metabase/metabase.jar
 ```
 
-### Extras
-
-You can run as follows to avoid the CharConversionException exceptions. By this way, JCC converts invalid characters to NULL instead of throwing exceptions.
-
-```bash
-java -Ddb2.jcc.charsetDecoderEncoder=3 -jar metabase.jar
-```
-
 ## Thanks
 Thanks to everybody here [https://github.com/metabase/metabase/issues/1509](https://github.com/metabase/metabase/issues/1509)
