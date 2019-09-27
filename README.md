@@ -87,5 +87,11 @@ You can run as follows to avoid the CharConversionException exceptions. By this 
 java -Ddb2.jcc.charsetDecoderEncoder=3 -jar metabase.jar
 ```
 
+or set it as an environment variable  
+
+```bash
+export JAVA_TOOL_OPTIONS="-Ddb2.jcc.charsetDecoderEncoder=3"
+```
+
 ## Thanks
 Thanks to everybody here [https://github.com/metabase/metabase/issues/1509](https://github.com/metabase/metabase/issues/1509)
