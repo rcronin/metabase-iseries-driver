@@ -4,9 +4,6 @@
   :dependencies
    [[com.ibm.db2/jcc "11.1.4.4"]]
 
-  :jvm-opts 
-   ["-Ddb2.jcc.charsetDecoderEncoder=3"]
-
   :profiles
   {:provided
    {:dependencies [[metabase-core "1.0.0-SNAPSHOT"]]}
