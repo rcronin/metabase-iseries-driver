@@ -93,5 +93,17 @@ or set it as an environment variable
 export JAVA_TOOL_OPTIONS="-Ddb2.jcc.charsetDecoderEncoder=3"
 ```
 
+I recommend the following additional connection parameters for performance:
+
+```bash
+defaultIsolationLevel=1;
+```
+for uncommited read ("dirty" read), and
+
+```bash
+readOnly=true;
+```
+
+
 ## Thanks
 Thanks to everybody here [https://github.com/metabase/metabase/issues/1509](https://github.com/metabase/metabase/issues/1509)
