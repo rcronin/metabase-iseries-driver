@@ -8,7 +8,7 @@ First download Metabase Jar File [here](https://metabase.com/start/other.html)  
 ```bash
 java -jar metabase.jar
 ```
-The `plugins/` directory will be created. Drop the driver in your `plugins/` directory. You can grab it [here](https://github.com/alisonrafael/metabase-db2-driver/releases/download/v1.0.0/db2.metabase-driver.jar) or build it yourself:
+The `plugins/` directory will be created. Drop the driver in your `plugins/` directory. You can grab it [here](https://github.com/alisonrafael/metabase-db2-driver/releases/download/v1.1.0/db2.metabase-driver.jar) or build it yourself:
 
 ##  Editing the plugin: Prerequisites
 
@@ -79,7 +79,7 @@ cp /metabase_source/modules/drivers/db2/target/uberjar/db2.metabase-driver.jar /
 jar -jar /path/to/metabase/metabase.jar
 ```
 
-### Extras
+## Configurations
 
 You can run as follows to avoid the CharConversionException exceptions. By this way, JCC converts invalid characters to NULL instead of throwing exceptions.
 
