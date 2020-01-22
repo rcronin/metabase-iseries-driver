@@ -4,11 +4,12 @@
             [clojure.string :as str]
             [clj-time
              [coerce :as tcoerce]
-             [core :as t]
+             [core :as tc]
              [format :as time]]
             [honeysql
              [core :as hsql]
              [format :as hformat]]
+            [java-time :as t]
             [metabase.driver :as driver]
             [metabase.driver.common :as driver.common]
             [metabase.query-processor
@@ -24,10 +25,11 @@
              [sync :as sql-jdbc.sync]]
             [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.util
-             [date :as du]
+             [date-2 :as du]
              [honeysql-extensions :as hx]
              [ssh :as ssh]]
             [metabase.driver.sql :as sql]
+            [metabase.query-processor.timezone :as qp.timezone]
             [schema.core :as s])
   (:import [java.sql ResultSet Types]
            java.util.Date)
@@ -35,6 +37,7 @@
            [java.util Date UUID])
   (:import [java.sql ResultSet Time Timestamp Types]
            [java.util Calendar Date TimeZone]
+           [java.time Instant LocalDateTime OffsetDateTime OffsetTime ZonedDateTime LocalDate LocalTime]
            metabase.util.honeysql_extensions.Literal
            org.joda.time.format.DateTimeFormatter))
 
@@ -168,20 +171,77 @@
                            :tmp]]}]
        :where  [(hsql/raw (format "rn BETWEEN %d AND %d" offset (+ offset items)))]})))
 
-;; Filtering with dates causes a -245 error.
+;;; +----------------------------------------------------------------------------------------------------------------+
+;;; |                                           metabase.driver.sql date workarounds                                 |
+;;; +----------------------------------------------------------------------------------------------------------------+
+
+;; Filtering with dates causes a -245 error. ;;v0.33.x
 ;; Explicit cast to timestamp when Date function is called to prevent db2 unknown parameter type.
 ;; Maybe it could not to be necessary with the use of DB2_DEFERRED_PREPARE_SEMANTICS
 (defmethod sql.qp/->honeysql [:db2 Date]
   [_ date]
-  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
+  		(hx/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date))) ;;v0.34.x needs it?
+  ;;(hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date))) ;;v0.33.x
 
-;; The sql.qp/->honeysql entrypoint is used by MBQL, but native queries with field filters have the same issue.
-;; Return a map that will be used in the prepared statement to correctly cast the date.
-;; Needs correction. You can use mysql.clj as guide.
-;;(s/defmethod sql/->prepared-substitution [:db2 Date] :- sql/PreparedStatementSubstitution
-;;  [_ date]
-;;  (hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date)))
+(defmethod sql.qp/->honeysql [:db2 Timestamp]
+  [_ date]
+  		(hx/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date)))
 
+;; MEGA HACK from sqlite.clj ;;v0.34.x
+;; Fix to Unrecognized JDBC type: 2014. ERRORCODE=-4228 
+(defn- zero-time? [t]
+  (= (t/local-time t) (t/local-time 0)))
+
+(defmethod sql.qp/->honeysql [:db2 LocalDate]
+  [_ t]
+  (hsql/call :date (hx/literal (du/format-sql t))))
+
+(defmethod sql.qp/->honeysql [:db2 LocalDateTime]
+  [driver t]
+  (if (zero-time? t)
+    (sql.qp/->honeysql driver (t/local-date t))
+    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+
+(defmethod sql.qp/->honeysql [:db2 LocalTime]
+  [_ t]
+  (hsql/call :time (hx/literal (du/format-sql t))))
+
+(defmethod sql.qp/->honeysql [:db2 OffsetDateTime]
+  [driver t]
+  (if (zero-time? t)
+    (sql.qp/->honeysql driver (t/local-date t))
+    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+
+(defmethod sql.qp/->honeysql [:db2 OffsetTime]
+  [_ t]
+  (hsql/call :time (hx/literal (du/format-sql t))))
+
+(defmethod sql.qp/->honeysql [:db2 ZonedDateTime]
+  [driver t]
+  (if (zero-time? t)
+    (sql.qp/->honeysql driver (t/local-date t))
+    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+  
+;; (.getObject rs i LocalDate) doesn't seem to work, nor does `(.getDate)`; ;;v0.34.x
+;; Merged from vertica.clj e sqlite.clj. 
+;; Fix to Invalid data conversion: Wrong result column type for requested conversion. ERRORCODE=-4461
+(defmethod sql-jdbc.execute/read-column [:db2 Types/DATE]
+		[_ _ ^ResultSet rs _ ^Integer i]
+		  (let [s (.getString rs i)
+		        t (du/parse s)]
+		    t))
+
+(defmethod sql-jdbc.execute/read-column [:db2 Types/TIME]
+		[_ _ ^ResultSet rs _ ^Integer i]
+		  (let [s (.getString rs i)
+		        t (du/parse s)]
+		    t))
+
+(defmethod sql-jdbc.execute/read-column [:db2 Types/TIMESTAMP]
+		[_ _ ^ResultSet rs _ ^Integer i]
+		  (let [s (.getString rs i)
+		        t (du/parse s)]
+		    t))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
