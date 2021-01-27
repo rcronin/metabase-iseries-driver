@@ -92,7 +92,7 @@
     "yyyy-MM-dd HH:mm:ss.SSSSS"]))
 
 (defmethod driver.common/current-db-time-native-query :db2 [_]
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1") 
+  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1")
 
 (defmethod driver/current-db-time :db2 [& args]
   (apply driver.common/current-db-time args))
@@ -149,13 +149,8 @@
 ;; Maybe it could not to be necessary with the use of DB2_COMPATIBILITY_VECTOR
 (defmethod sql.qp/apply-top-level-clause [:db2 :limit]
   [_ _ honeysql-query {value :limit}]
-  {:select [:*]
-   ;; if `honeysql-query` doesn't have a `SELECT` clause yet (which might be the case when using a source query) fall
-   ;; back to including a `SELECT *` just to make sure a valid query is produced
-   :from   [(-> (merge {:select [:*]}
-                       honeysql-query)
-                (update :select sql.u/select-clause-deduplicate-aliases))]
-   :fetch  [(hsql/raw (format "FIRST %d ROWS ONLY" value))]})
+  (merge honeysql-query
+         (hsql/raw (format "FETCH FIRST %d ROWS ONLY" value))))
 
 (defmethod sql.qp/apply-top-level-clause [:db2 :page]
   [driver _ honeysql-query {{:keys [items page]} :page}]
@@ -188,7 +183,7 @@
   		(hx/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date)))
 
 ;; MEGA HACK from sqlite.clj ;;v0.34.x
-;; Fix to Unrecognized JDBC type: 2014. ERRORCODE=-4228 
+;; Fix to Unrecognized JDBC type: 2014. ERRORCODE=-4228
 (defn- zero-time? [t]
   (= (t/local-time t) (t/local-time 0)))
 
@@ -221,9 +216,9 @@
   (if (zero-time? t)
     (sql.qp/->honeysql driver (t/local-date t))
     (hsql/call :datetime (hx/literal (du/format-sql t)))))
-  
+
 ;; (.getObject rs i LocalDate) doesn't seem to work, nor does `(.getDate)`; ;;v0.34.x
-;; Merged from vertica.clj e sqlite.clj. 
+;; Merged from vertica.clj e sqlite.clj.
 ;; Fix to Invalid data conversion: Wrong result column type for requested conversion. ERRORCODE=-4461
 (defmethod sql-jdbc.execute/read-column [:db2 Types/DATE]
 		[_ _ ^ResultSet rs _ ^Integer i]
@@ -263,8 +258,8 @@
 ;; Mappings for DB2 types to Metabase types.
 ;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
 (defmethod sql-jdbc.sync/database-type->base-type :db2 [_ database-type]
-  ({:BIGINT       :type/BigInteger    
-    :BINARY       :type/*             
+  ({:BIGINT       :type/BigInteger
+    :BINARY       :type/*
     :BLOB         :type/*
     :BOOLEAN      :type/Boolean
     :CHAR         :type/Text
@@ -284,6 +279,7 @@
     :SMALLINT     :type/Integer
     :TIME         :type/Time
     :TIMESTAMP    :type/DateTime
+    :VARBINARY    :type/*
     :VARCHAR      :type/Text
     :VARGRAPHIC   :type/Text
     :XML          :type/Text
@@ -294,17 +290,20 @@
     (keyword "VARCHAR () FOR BIT DATA")   :type/*} database-type))
 
 (defmethod sql-jdbc.sync/excluded-schemas :db2 [_]
-  #{"SQLJ" 
-    "SYSCAT" 
-    "SYSFUN" 
-    "SYSIBMADM" 
-    "SYSIBMINTERNAL" 
-    "SYSIBMTS" 
+  #{"SQLJ"
+    "SYSCAT"
+    "SYSFUN"
+    "SYSIBMADM"
+    "SYSIBMINTERNAL"
+    "SYSIBMTS"
     "SPOOLMAIL"
-    "SYSPROC" 
-    "SYSPUBLIC" 
+    "SYSPROC"
+    "SYSPUBLIC"
     "SYSSTAT"
     "SYSTOOLS"})
 
 (defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
   "SET SESSION TIME ZONE = %s")
+
+(defmethod sql-jdbc.sync/have-select-privilege? :db2 [driver conn table-schema table-name]
+  true)
