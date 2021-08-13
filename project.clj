@@ -1,4 +1,4 @@
-(defproject metabase/db2-driver "1.0.0-SNAPSHOT-11.1.4.4"
+(defproject metabase/db2-driver "1.0.38"
   :min-lein-version "2.5.0"
 
   :dependencies
