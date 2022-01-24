@@ -1,4 +1,4 @@
-(defproject metabase/db2-driver "1.0.38"
+(defproject metabase/db2-driver "1.0.42"
   :min-lein-version "2.5.0"
 
   :dependencies
@@ -6,7 +6,7 @@
 
   :profiles
   {:provided
-   {:dependencies [[metabase-core "1.0.0-SNAPSHOT"]]}
+   {:dependencies [[local/metabase-core "1.42"]]}
 
    :uberjar
    {:auto-clean    true

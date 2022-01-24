@@ -1,6 +1,6 @@
 info:
   name: Metabase DB2 Driver
-  version: 1.0.2
+  version: 1.0.40
   description: Allows Metabase to connect to DB2 databases.
 driver:
   name: db2
@@ -11,7 +11,7 @@ driver:
     - host
     - merge:
         - port
-        - default: 50000
+        - default: 446
     - dbname
     - user
     - password

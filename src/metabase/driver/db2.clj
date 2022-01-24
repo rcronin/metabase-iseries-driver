@@ -24,10 +24,11 @@
              [common :as sql-jdbc.common]
              [sync :as sql-jdbc.sync]]
             [metabase.driver.sql.util.unprepare :as unprepare]
+            [metabase.driver.sql-jdbc.execute.legacy-impl :as legacy]
             [metabase.util
              [date-2 :as du]
-             [honeysql-extensions :as hx]
-             [ssh :as ssh]]
+             [honeysql-extensions :as hx]]
+            [metabase.util.ssh :as ssh]
             [metabase.driver.sql :as sql]
             [metabase.query-processor.timezone :as qp.timezone]
             [schema.core :as s])
@@ -41,7 +42,10 @@
            metabase.util.honeysql_extensions.Literal
            org.joda.time.format.DateTimeFormatter))
 
-(driver/register! :db2, :parent :sql-jdbc)
+(driver/register! :db2
+                  :parent #{:sql-jdbc ::legacy/use-legacy-classes-for-read-and-set})
+
+;; (driver/register! :db2, :parent :sql-jdbc)
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
@@ -125,15 +129,22 @@
 (defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] (hsql/call :hour expr))
 (defmethod sql.qp/date [:db2 :day]            [_ _ expr] (hsql/call :date expr))
 (defmethod sql.qp/date [:db2 :day-of-month]   [_ _ expr] (hsql/call :day expr))
-(defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr (hsql/raw (format "%d days" (int (hx/- (hsql/call :dayofweek expr) 1))))))
+;; (defmethod sql.qp/date [:db2 :week]            [_ _ expr] (hsql/call :date expr))
+;; (defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx/- expr (hsql/raw (str "dayofweek(current date) days"))))
+(defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx/- expr (hsql/raw (format "%s days" (hformat/to-sql (hsql/call :dayofweek expr))))))
+;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] ((hx/concat (date-format "YYYY-MM-DD" expr) (hsql/raw (format " - dayofweek(%d) days" expr)))))
+;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr ((hsql/raw (hsql/call :dayofweek expr)) " days")))
+;;(defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr (hsql/raw (hsql/format "days" (hsql/call :dayofweek expr)))))
+;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr (hsql/raw (format "%d days" (int (hx/- (hsql/call :dayofweek expr) 1))))))
 (defmethod sql.qp/date [:db2 :month]          [_ _ expr] (str-to-date "YYYY-MM-DD" (hx/concat (date-format "YYYY-MM" expr) (hx/literal "-01"))))
 (defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (hsql/call :month expr))
 (defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx/year expr)) (int ((hx/- (hx/* (hx/quarter expr) 3) 2)))))))
-(defmethod sql.qp/date [:db2 :year]           [_ _ expr] (hsql/call :year expr))
+(defmethod sql.qp/date [:db2 :year]           [_ _ expr] (str-to-date "YYYY-MM-DD" (hx/concat (date-format "YYYY" expr) (hx/literal "-01-01"))))
 (defmethod sql.qp/date [:db2 :week-of-year]   [_ _ expr] (hsql/call :week expr))
 (defmethod sql.qp/date [:db2 :day-of-week]     [driver _ expr] (hsql/call :dayofweek expr))
 (defmethod sql.qp/date [:db2 :day-of-year]     [driver _ expr] (hsql/call :dayofyear expr))
 (defmethod sql.qp/date [:db2 :quarter-of-year] [driver _ expr] (hsql/call :quarter expr))
+
 
 (defmethod sql.qp/add-interval-honeysql-form :db2 [_ dt amount unit]
   (hx/+ (hx/->timestamp dt) (case unit
@@ -141,22 +152,22 @@
     :minute  (hsql/raw (format "%d minutes" (int amount)))
     :hour    (hsql/raw (format "%d hours" (int amount)))
     :day     (hsql/raw (format "%d days" (int amount)))
-    :week    (hsql/raw (format "%d days" (int (hx/* amount (hsql/raw 7)))))
+    :week    (hsql/raw (format "%d days" (* amount 7)))
     :month   (hsql/raw (format "%d months" (int amount)))
-    :quarter (hsql/raw (format "%d months" (int (hx/* amount (hsql/raw 3)))))
+    :quarter (hsql/raw (format "%d months" (* amount 3)))
     :year    (hsql/raw (format "%d years" (int amount)))
   )))
 
-(defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
-(hx/+ (hx/->timestamp hsql-form) (case unit
-                            :second  (hsql/raw (format "current timestamp + %d seconds" (int amount)))
-                            :minute  (hsql/raw (format "current timestamp + %d minutes" (int amount)))
-                            :hour    (hsql/raw (format "current timestamp + %d hours" (int amount)))
-                            :day     (hsql/raw (format "current timestamp + %d days" (int amount)))
-                            :week    (hsql/raw (format "current timestamp + %d days" (int (hx/* amount (hsql/raw 7)))))
-                            :month   (hsql/raw (format "current timestamp + %d months" (int amount)))
-                            :quarter (hsql/raw (format "current timestamp + %d months" (int (hx/* amount (hsql/raw 3)))))
-                            :year    (hsql/raw (format "current timestamp + %d years" (int amount))))))
+;; (defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
+;; (hx/+ (hx/->timestamp hsql-form) (case unit
+;;                             :second  (hsql/raw (format "%d seconds" (int amount)))
+;;                             :minute  (hsql/raw (format "%d minutes" (int amount)))
+;;                             :hour    (hsql/raw (format "%d hours" (int amount)))
+;;                             :day     (hsql/raw (format "%d days" (int amount)))
+;;                             :week    (hsql/raw (format "%d days" (int (hx/* amount (hsql/raw 7)))))
+;;                             :month   (hsql/raw (format "%d months" (int amount)))
+;;                             :quarter (hsql/raw (format "%d months" (int (hx/* amount (hsql/raw 3)))))
+;;                             :year    (hsql/raw (format "%d years" (int amount))))))
 
 
 (defmethod sql.qp/unix-timestamp->honeysql [:db2 :seconds] [_ _ expr]
@@ -201,9 +212,9 @@
 ;; Filtering with dates causes a -245 error. ;;v0.33.x
 ;; Explicit cast to timestamp when Date function is called to prevent db2 unknown parameter type.
 ;; Maybe it could not to be necessary with the use of DB2_DEFERRED_PREPARE_SEMANTICS
-(defmethod sql.qp/->honeysql [:db2 Date]
-  [_ date]
-  		(hx/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date))) ;;v0.34.x needs it?
+;; (defmethod sql.qp/->honeysql [:db2 Date]
+;;   [_ date]
+;;   		(hx/->timestamp (t/format "yyyy-MM-dd" date))) ;;v0.34.x needs it?
   ;;(hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date))) ;;v0.33.x
 
 (defmethod sql.qp/->honeysql [:db2 Timestamp]
@@ -248,30 +259,30 @@
 ;; (.getObject rs i LocalDate) doesn't seem to work, nor does `(.getDate)`; ;;v0.34.x
 ;; Merged from vertica.clj e sqlite.clj.
 ;; Fix to Invalid data conversion: Wrong result column type for requested conversion. ERRORCODE=-4461
-(defmethod sql-jdbc.execute/read-column [:db2 Types/DATE]
-		[_ _ ^ResultSet rs _ ^Integer i]
-		  (let [s (.getString rs i)
-		        t (du/parse s)]
-		    t))
+;; (defmethod sql-jdbc.execute/read-column [:db2 Types/DATE]
+;; 		[_ _ ^ResultSet rs _ ^Integer i]
+;; 		  (let [s (.getString rs i)
+;; 		        t (du/parse s)]
+;; 		    t))
 
-(defmethod sql-jdbc.execute/read-column [:db2 Types/TIME]
-		[_ _ ^ResultSet rs _ ^Integer i]
-		  (let [s (.getString rs i)
-		        t (du/parse s)]
-		    t))
+;; (defmethod sql-jdbc.execute/read-column [:db2 Types/TIME]
+;; 		[_ _ ^ResultSet rs _ ^Integer i]
+;; 		  (let [s (.getString rs i)
+;; 		        t (du/parse s)]
+;; 		    t))
 
-(defmethod sql-jdbc.execute/read-column [:db2 Types/TIMESTAMP]
-		[_ _ ^ResultSet rs _ ^Integer i]
-		  (let [s (.getString rs i)
-		        t (du/parse s)]
-		    t))
+;; (defmethod sql-jdbc.execute/read-column [:db2 Types/TIMESTAMP]
+;; 		[_ _ ^ResultSet rs _ ^Integer i]
+;; 		  (let [s (.getString rs i)
+;; 		        t (du/parse s)]
+;; 		    t))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (defmethod sql-jdbc.conn/connection-details->spec :db2
-  [_ {:keys [host port db dbname]
+  [_ {:keys [host port dbname]
       :or   {host "localhost", port 50000, dbname ""}
       :as   details}]
   (-> (merge {:classname   "com.ibm.db2.jcc.DB2Driver"
@@ -281,7 +292,7 @@
       (sql-jdbc.common/handle-additional-options details, :seperator-style :semicolon)))
 
 (defmethod driver/can-connect? :db2 [driver details]
-  (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel! details))]
+  (let [connection (sql-jdbc.conn/connection-details->spec driver details)]
     (= 1 (first (vals (first (jdbc/query connection ["SELECT 1 FROM SYSIBM.SYSDUMMY1"])))))))
 
 ;; Mappings for DB2 types to Metabase types.
@@ -343,3 +354,14 @@
 
 (defmethod sql-jdbc.sync/have-select-privilege? :db2 [driver conn table-schema table-name]
   true)
+
+;; Overridden to have access to the database with the configured property dbnames (inclusion list)
+;; which will be used to filter the schemas.
+(defmethod driver/describe-database :db2
+  [_ {:keys [details] :as database}]
+  {:tables
+   (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
+     (set
+      (for [{:keys [schema table]} (jdbc/query {:connection conn} ["select schema, table from etllib.metabase_table_metadata"])]
+        {:name table 
+         :schema schema})))})
