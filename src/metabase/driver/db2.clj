@@ -131,13 +131,7 @@
 (defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] (hsql/call :hour expr))
 (defmethod sql.qp/date [:db2 :day]            [_ _ expr] (hsql/call :date expr))
 (defmethod sql.qp/date [:db2 :day-of-month]   [_ _ expr] (hsql/call :day expr))
-;; (defmethod sql.qp/date [:db2 :week]            [_ _ expr] (hsql/call :date expr))
-;; (defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx/- expr (hsql/raw (str "dayofweek(current date) days"))))
 (defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx/- expr (hsql/raw (format "%s days" (hformat/to-sql (hsql/call :dayofweek expr))))))
-;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] ((hx/concat (date-format "YYYY-MM-DD" expr) (hsql/raw (format " - dayofweek(%d) days" expr)))))
-;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr ((hsql/raw (hsql/call :dayofweek expr)) " days")))
-;;(defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr (hsql/raw (hsql/format "days" (hsql/call :dayofweek expr)))))
-;; (defmethod sql.qp/date [:db2 :week]           [_ _ expr] (hx/- expr (hsql/raw (format "%d days" (int (hx/- (hsql/call :dayofweek expr) 1))))))
 (defmethod sql.qp/date [:db2 :month]          [_ _ expr] (str-to-date "YYYY-MM-DD" (hx/concat (date-format "YYYY-MM" expr) (hx/literal "-01"))))
 (defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (hsql/call :month expr))
 (defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx/year expr)) (int ((hx/- (hx/* (hx/quarter expr) 3) 2)))))))
@@ -159,18 +153,6 @@
     :quarter (hsql/raw (format "%d months" (* amount 3)))
     :year    (hsql/raw (format "%d years" (int amount)))
   )))
-
-;; (defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
-;; (hx/+ (hx/->timestamp hsql-form) (case unit
-;;                             :second  (hsql/raw (format "%d seconds" (int amount)))
-;;                             :minute  (hsql/raw (format "%d minutes" (int amount)))
-;;                             :hour    (hsql/raw (format "%d hours" (int amount)))
-;;                             :day     (hsql/raw (format "%d days" (int amount)))
-;;                             :week    (hsql/raw (format "%d days" (int (hx/* amount (hsql/raw 7)))))
-;;                             :month   (hsql/raw (format "%d months" (int amount)))
-;;                             :quarter (hsql/raw (format "%d months" (int (hx/* amount (hsql/raw 3)))))
-;;                             :year    (hsql/raw (format "%d years" (int amount))))))
-
 
 (defmethod sql.qp/unix-timestamp->honeysql [:db2 :seconds] [_ _ expr]
   (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int expr))))
@@ -295,7 +277,7 @@
 
 (defmethod driver/can-connect? :db2 [driver details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver details)]
-    (= 1 (first (vals (first (jdbc/query connection ["SELECT 1 FROM SYSIBM.SYSDUMMY1"])))))))
+    (= 1 (first (vals (first (jdbc/query connection ["VALUES 1"])))))))
 
 ;; Mappings for DB2 types to Metabase types.
 ;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
@@ -364,6 +346,6 @@
   {:tables
    (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
      (set
-      (for [{:keys [schema table]} (jdbc/query {:connection conn} ["select schema, table from etllib.metabase_table_metadata"])]
+      (for [{:keys [schema table]} (jdbc/query {:connection conn} ["select table_schem, table_name from sysibm.sqltableprivileges where grantee = current_user and privilege = 'SELECT'"])]
         {:name table 
          :schema schema})))})
