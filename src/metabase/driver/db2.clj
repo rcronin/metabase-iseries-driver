@@ -267,16 +267,16 @@
 
 (defmethod sql-jdbc.conn/connection-details->spec :db2
   [_ {:keys [host port dbname]
-      :or   {host "localhost", port 50000, dbname ""}
+      :or   {host "localhost", port 3386, dbname ""}
       :as   details}]
-  (-> (merge {:classname   "com.ibm.db2.jcc.DB2Driver"
-              :subprotocol "db2"
-              :subname     (str "//" host ":" port "/" dbname ":" )}
-             (dissoc details :host :port :dbname :ssl))
-      (sql-jdbc.common/handle-additional-options details, :seperator-style :semicolon)))
+  (-> (merge {:classname "com.ibm.as400.access.AS400JDBCDriver"   ;; must be in classpath
+          :subprotocol "as400"
+          :subname (str "//" host ":" port "/" dbname)}                    ;; :subname (str "//" host "/" dbname)}   (str "//" host ":" port "/" (or dbname db))}
+         (dissoc details :host :port :dbname))
+  (sql-jdbc.common/handle-additional-options details, :separator-style :semicolon)))
 
 (defmethod driver/can-connect? :db2 [driver details]
-  (let [connection (sql-jdbc.conn/connection-details->spec driver details)]
+  (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel! details))]
     (= 1 (first (vals (first (jdbc/query connection ["VALUES 1"])))))))
 
 ;; Mappings for DB2 types to Metabase types.
