@@ -1,5 +1,4 @@
 (ns metabase.driver.db2
-  "Driver for DB2 databases."
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
             [clj-time
@@ -26,8 +25,8 @@
             [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.driver.sql-jdbc.execute.legacy-impl :as legacy]
             [metabase.util
-             [date-2 :as du]
-             [honeysql-extensions :as hx]]
+             [honey-sql-2 :as hx2]
+             [date-2 :as du]]
             [metabase.util.ssh :as ssh]
             [metabase.driver.sql :as sql]
             [metabase.query-processor.timezone :as qp.timezone]
@@ -39,13 +38,10 @@
   (:import [java.sql ResultSet Time Timestamp Types]
            [java.util Calendar Date TimeZone]
            [java.time Instant LocalDateTime OffsetDateTime OffsetTime ZonedDateTime LocalDate LocalTime]
-           metabase.util.honeysql_extensions.Literal
            org.joda.time.format.DateTimeFormatter))
 
 (driver/register! :db2
                   :parent #{:sql-jdbc ::legacy/use-legacy-classes-for-read-and-set})
-
-;; (driver/register! :db2, :parent :sql-jdbc)
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
@@ -54,41 +50,6 @@
 (defmethod driver/display-name :db2 [_] "DB2")
 
 (defmethod driver/supports? [:db2 :set-timezone] [_ _] false)
-
-(defmethod driver/humanize-connection-error-message :db2 [_ message]
-  (condp re-matches message
-    #"^FATAL: database \".*\" does not exist$"
-    (driver.common/connection-error-messages :database-name-incorrect)
-
-    #"^No suitable driver found for.*$"
-    (driver.common/connection-error-messages :invalid-hostname)
-
-    #"^Connection refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.$"
-    (driver.common/connection-error-messages :cannot-connect-check-host-and-port)
-
-    #"^FATAL: role \".*\" does not exist$"
-    (driver.common/connection-error-messages :username-incorrect)
-
-    #"^FATAL: password authentication failed for user.*$"
-    (driver.common/connection-error-messages :password-incorrect)
-
-    #"^FATAL: .*$" ; all other FATAL messages: strip off the 'FATAL' part, capitalize, and add a period
-    (let [[_ message] (re-matches #"^FATAL: (.*$)" message)]
-      (str (str/capitalize message) \.))
-
-    #".*" ; default
-    message))
-
-;; Additional options: https://www.ibm.com/support/knowledgecenter/en/SSEPGG_9.7.0/com.ibm.db2.luw.apdv.java.doc/src/tpc/imjcc_r0052038.html
-;; (defmethod driver/connection-properties :db2 [_]
-;;   (ssh/with-tunnel-config!
-;;     [driver.common/default-host-details
-;;      driver.common/default-port-details
-;;      driver.common/default-dbname-details
-;;      driver.common/default-user-details
-;;      driver.common/default-password-details
-;;      driver.common/default-ssl-details
-;;      driver.common/default-additional-options-details]))
 
 ;; Needs improvements and tests
 (defmethod driver.common/current-db-time-date-formatters :db2 [_]
@@ -116,8 +77,8 @@
 ;;; |                                           metabase.driver.sql impls                                            |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defn- date-format [format-str expr] (hsql/call :varchar_format expr (hx/literal format-str)))
-(defn- str-to-date [format-str expr] (hsql/call :to_date expr (hx/literal format-str)))
+(defn- date-format [format-str expr] (hsql/call :varchar_format expr (hx2/literal format-str)))
+(defn- str-to-date [format-str expr] (hsql/call :to_date expr (hx2/literal format-str)))
 
 (defn- trunc-with-format [format-str expr]
 (str-to-date format-str (date-format format-str expr)))
@@ -131,11 +92,11 @@
 (defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] (hsql/call :hour expr))
 (defmethod sql.qp/date [:db2 :day]            [_ _ expr] (hsql/call :date expr))
 (defmethod sql.qp/date [:db2 :day-of-month]   [_ _ expr] (hsql/call :day expr))
-(defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx/- expr (hsql/raw (format "%s days" (hformat/to-sql (hsql/call :dayofweek expr))))))
-(defmethod sql.qp/date [:db2 :month]          [_ _ expr] (str-to-date "YYYY-MM-DD" (hx/concat (date-format "YYYY-MM" expr) (hx/literal "-01"))))
+(defmethod sql.qp/date [:db2 :week] [_ _ expr] (hx2/- expr (hsql/raw (format "%s days" (hformat/to-sql (hsql/call :dayofweek expr))))))
+(defmethod sql.qp/date [:db2 :month]          [_ _ expr] (str-to-date "YYYY-MM-DD" (hx2/concat (date-format "YYYY-MM" expr) (hx2/literal "-01"))))
 (defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (hsql/call :month expr))
-(defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx/year expr)) (int ((hx/- (hx/* (hx/quarter expr) 3) 2)))))))
-(defmethod sql.qp/date [:db2 :year]           [_ _ expr] (str-to-date "YYYY-MM-DD" (hx/concat (date-format "YYYY" expr) (hx/literal "-01-01"))))
+(defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (str-to-date "YYYY-MM-DD" (hsql/raw (format "%d-%d-01" (int (hx2/year expr)) (int ((hx2/- (hx2/* (hx2/quarter expr) 3) 2)))))))
+(defmethod sql.qp/date [:db2 :year]           [_ _ expr] (str-to-date "YYYY-MM-DD" (hx2/concat (date-format "YYYY" expr) (hx2/literal "-01-01"))))
 (defmethod sql.qp/date [:db2 :week-of-year]   [_ _ expr] (hsql/call :week expr))
 (defmethod sql.qp/date [:db2 :day-of-week]     [driver _ expr] (hsql/call :dayofweek expr))
 (defmethod sql.qp/date [:db2 :day-of-year]     [driver _ expr] (hsql/call :dayofyear expr))
@@ -143,7 +104,7 @@
 
 
 (defmethod sql.qp/add-interval-honeysql-form :db2 [_ dt amount unit]
-  (hx/+ (hx/->timestamp dt) (case unit
+  (hx2/+ (hx2/->timestamp dt) (case unit
     :second  (hsql/raw (format "%d seconds" (int amount)))
     :minute  (hsql/raw (format "%d minutes" (int amount)))
     :hour    (hsql/raw (format "%d hours" (int amount)))
@@ -155,10 +116,10 @@
   )))
 
 (defmethod sql.qp/unix-timestamp->honeysql [:db2 :seconds] [_ _ expr]
-  (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int expr))))
+  (hx2/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int expr))))
 
 (defmethod sql.qp/unix-timestamp->honeysql [:db2 :milliseconds] [driver _ expr]
-  (hx/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int (hx// expr 1000)))))))
+  (hx2/+ (hsql/raw "timestamp('1970-01-01 00:00:00')") (hsql/raw (format "%d seconds" (int (hx2// expr 1000)))))))
 
 (def ^:private now (hsql/raw "current timestamp"))
 
@@ -193,73 +154,48 @@
 ;;; |                                           metabase.driver.sql date workarounds                                 |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-;; Filtering with dates causes a -245 error. ;;v0.33.x
-;; Explicit cast to timestamp when Date function is called to prevent db2 unknown parameter type.
-;; Maybe it could not to be necessary with the use of DB2_DEFERRED_PREPARE_SEMANTICS
-;; (defmethod sql.qp/->honeysql [:db2 Date]
-;;   [_ date]
-;;   		(hx/->timestamp (t/format "yyyy-MM-dd" date))) ;;v0.34.x needs it?
-  ;;(hx/->timestamp (du/format-date "yyyy-MM-dd HH:mm:ss" date))) ;;v0.33.x
-
 (defmethod sql.qp/->honeysql [:db2 Timestamp]
   [_ date]
-  		(hx/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date)))
+  		(hx2/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date)))
 
-;; MEGA HACK from sqlite.clj ;;v0.34.x
-;; Fix to Unrecognized JDBC type: 2014. ERRORCODE=-4228
 (defn- zero-time? [t]
   (= (t/local-time t) (t/local-time 0)))
 
 (defmethod sql.qp/->honeysql [:db2 LocalDate]
   [_ t]
-  (hsql/call :date (hx/literal (du/format-sql t))))
+  (hsql/call :date (hx2/literal (du/format-sql t))))
 
 (defmethod sql.qp/->honeysql [:db2 LocalDateTime]
   [driver t]
   (if (zero-time? t)
     (sql.qp/->honeysql driver (t/local-date t))
-    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+    (hsql/call :datetime (hx2/literal (du/format-sql t)))))
 
 (defmethod sql.qp/->honeysql [:db2 LocalTime]
   [_ t]
-  (hsql/call :time (hx/literal (du/format-sql t))))
+  (hsql/call :time (hx2/literal (du/format-sql t))))
 
 (defmethod sql.qp/->honeysql [:db2 OffsetDateTime]
   [driver t]
   (if (zero-time? t)
     (sql.qp/->honeysql driver (t/local-date t))
-    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+    (hsql/call :datetime (hx2/literal (du/format-sql t)))))
 
 (defmethod sql.qp/->honeysql [:db2 OffsetTime]
   [_ t]
-  (hsql/call :time (hx/literal (du/format-sql t))))
+  (hsql/call :time (hx2/literal (du/format-sql t))))
 
 (defmethod sql.qp/->honeysql [:db2 ZonedDateTime]
   [driver t]
   (if (zero-time? t)
     (sql.qp/->honeysql driver (t/local-date t))
-    (hsql/call :datetime (hx/literal (du/format-sql t)))))
+    (hsql/call :datetime (hx2/literal (du/format-sql t)))))
 
-;; (.getObject rs i LocalDate) doesn't seem to work, nor does `(.getDate)`; ;;v0.34.x
-;; Merged from vertica.clj e sqlite.clj.
-;; Fix to Invalid data conversion: Wrong result column type for requested conversion. ERRORCODE=-4461
-;; (defmethod sql-jdbc.execute/read-column [:db2 Types/DATE]
-;; 		[_ _ ^ResultSet rs _ ^Integer i]
-;; 		  (let [s (.getString rs i)
-;; 		        t (du/parse s)]
-;; 		    t))
-
-;; (defmethod sql-jdbc.execute/read-column [:db2 Types/TIME]
-;; 		[_ _ ^ResultSet rs _ ^Integer i]
-;; 		  (let [s (.getString rs i)
-;; 		        t (du/parse s)]
-;; 		    t))
-
-;; (defmethod sql-jdbc.execute/read-column [:db2 Types/TIMESTAMP]
-;; 		[_ _ ^ResultSet rs _ ^Integer i]
-;; 		  (let [s (.getString rs i)
-;; 		        t (du/parse s)]
-;; 		    t))
+(defmethod sql.qp/->honeysql [:db2 :concat]
+  [driver [_ & args]]
+  (into
+   [:||]
+   (mapv (partial sql.qp/->honeysql driver) args)))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
@@ -342,10 +278,10 @@
 ;; Overridden to have access to the database with the configured property dbnames (inclusion list)
 ;; which will be used to filter the schemas.
 (defmethod driver/describe-database :db2
-  [_ {:keys [details] :as database}]
+  [_ database]
   {:tables
    (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
      (set
-      (for [{:keys [schema table]} (jdbc/query {:connection conn} ["select table_schem, table_name from sysibm.sqltableprivileges where grantee = current_user and privilege = 'SELECT'"])]
-        {:name table 
-         :schema schema})))})
+      (for [{:keys [schema, table ]} (jdbc/query {:connection conn} ["select table_schem as schema, table_name as table from sysibm.sqltableprivileges where grantee = 'METABASE' and privilege = 'SELECT'"])]
+        {:name   (not-empty table) ; column name differs depending on server (SparkSQL, hive, Impala)
+         :schema (not-empty schema)})))})
