@@ -29,7 +29,6 @@ driver:
     - advanced-options-start
     - merge:
         - additional-options
-        - default: "prompt=false;naming=sql;date format=iso;time format=hms;time separator=colon"
         - placeholder: "prompt=false;naming=sql;date format=iso;time format=hms;time separator=colon"
     - default-advanced-options
 init:
