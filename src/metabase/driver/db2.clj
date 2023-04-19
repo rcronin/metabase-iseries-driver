@@ -92,10 +92,12 @@
 ;; Wrap a HoneySQL datetime EXPRession in appropriate forms to cast/bucket it as UNIT.
 ;; See [this page](https://www.ibm.com/developerworks/data/library/techarticle/0211yip/0211yip3.html) for details on the functions we're using.
 (defmethod sql.qp/date [:db2 :default]        [_ _ expr] expr)
-(defmethod sql.qp/date [:db2 :minute]         [_ _ expr] (trunc :mi expr))
+(defmethod sql.qp/date [:db2 :second]         [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:db2 :second-of-minute] [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:db2 :minute]         [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
 (defmethod sql.qp/date [:db2 :minute-of-hour] [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :hour]           [_ _ expr] (trunc :hh expr))
-(defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:db2 :hour]           [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
 (defmethod sql.qp/date [:db2 :day]            [_ _ expr] (trunc :dd expr))
 (defmethod sql.qp/date [:db2 :day-of-month]   [_ _ expr] (trunc :day expr))
 (defmethod sql.qp/date [:db2 :week] [driver _ expr] (sql.qp/adjust-start-of-week driver (partial trunc :day) expr))
@@ -106,8 +108,6 @@
 (defmethod sql.qp/date [:db2 :week-of-year]   [_ _ expr] [:week expr])
 (defmethod sql.qp/date [:db2 :day-of-week]     [_ _ expr] [:dayofweek expr])
 (defmethod sql.qp/date [:db2 :day-of-year]    [_ _ expr] [:dayofyear expr])
-
-(def ^:private ->timestamp (partial conj [:timestamp]))
 
 (defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
   (h2x/+ (h2x/->timestamp hsql-form) (case unit
@@ -171,9 +171,9 @@
   [_ t]
   [:time (h2x/literal (du/format-sql t))])
 
-(defmethod sql.qp/->honeysql [:db2 OffsetTime]
-  [_ t]
-  [:time (h2x/literal (du/format-sql t))])
+;; (defmethod sql.qp/->honeysql [:db2 OffsetTime]
+;;   [_ t]
+;;   [:time (h2x/literal (du/format-sql t))])
 
 (defmethod sql.qp/->honeysql [:db2 Boolean]
   [_ bool]
