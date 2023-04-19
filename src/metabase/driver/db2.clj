@@ -27,14 +27,9 @@
             [metabase.driver.sql :as sql]
             [metabase.query-processor.timezone :as qp.timezone]
             [schema.core :as s])
-  (:import [java.sql ResultSet Types]
-           java.util.Date)
-  (:import java.sql.Time
-           [java.util Date UUID])
-  (:import [java.sql ResultSet Time Timestamp Types]
-           [java.util Calendar Date TimeZone]
-           [java.time Instant LocalDateTime OffsetDateTime OffsetTime ZonedDateTime LocalDate LocalTime]
-           org.joda.time.format.DateTimeFormatter))
+  (:import java.sql.Time)
+  (:import [java.sql ResultSet Time Timestamp]
+           [java.time Instant LocalDateTime OffsetDateTime OffsetTime ZonedDateTime LocalDate LocalTime]))
 
 (set! *warn-on-reflection* true)
 
@@ -48,6 +43,8 @@
 (defmethod driver/display-name :db2 [_] "DB2")
 
 (defmethod driver/supports? [:db2 :set-timezone] [_ _] false)
+
+(defmethod driver/database-supports? [:db2 :now] [_driver _feat _db] true)
 
 (defmethod sql.qp/honey-sql-version :db2
   [_driver]
@@ -110,8 +107,10 @@
 (defmethod sql.qp/date [:db2 :day-of-week]     [_ _ expr] [:dayofweek expr])
 (defmethod sql.qp/date [:db2 :day-of-year]    [_ _ expr] [:dayofyear expr])
 
-(defmethod sql.qp/add-interval-honeysql-form :db2 [_ dt amount unit]
-  (h2x/+ (h2x/->timestamp dt) (case unit
+(def ^:private ->timestamp (partial conj [:timestamp]))
+
+(defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
+  (h2x/+ (h2x/->timestamp hsql-form) (case unit
     :second  (hx/raw (format "%d seconds" (int amount)))
     :minute  (hx/raw (format "%d minutes" (int amount)))
     :hour    (hx/raw (format "%d hours" (int amount)))
@@ -127,10 +126,6 @@
 
 (defmethod sql.qp/unix-timestamp->honeysql [:db2 :milliseconds] [driver _ expr]
   (h2x/+ (hx/raw "timestamp('1970-01-01 00:00:00')") (hx/raw (format "%d seconds" (int (h2x// expr 1000)))))))
-
-(def ^:private now (hx/raw "current timestamp"))
-
-(defmethod sql.qp/current-datetime-honeysql-form :db2 [_] now)
 
 (defmethod sql.qp/->honeysql [:db2 Boolean]
   [_ bool]
