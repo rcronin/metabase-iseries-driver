@@ -9,7 +9,7 @@ dependencies:
       Metabase requires the IBM i DB2 JDBC driver in order to connect to IBM i DB2 databases, but we can't ship it as part
       of Metabase due to licensing restrictions.
 driver:
-  name: db2
+  name: iseries
   display-name: DB2 for i
   lazy-load: true
   parent: sql-jdbc
@@ -33,6 +33,6 @@ driver:
     - default-advanced-options
 init:
   - step: load-namespace
-    namespace: metabase.driver.db2
+    namespace: metabase.driver.iseries
   - step: register-jdbc-driver
     class: com.ibm.as400.access.AS400JDBCDriver

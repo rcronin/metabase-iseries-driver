@@ -1,4 +1,4 @@
-(ns metabase.driver.db2
+(ns metabase.driver.iseries
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
             [clj-time
@@ -33,29 +33,29 @@
 
 (set! *warn-on-reflection* true)
 
-(driver/register! :db2
+(driver/register! :iseries
                   :parent #{:sql-jdbc ::legacy/use-legacy-classes-for-read-and-set})
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defmethod driver/display-name :db2 [_] "DB2")
+(defmethod driver/display-name :iseries [_] "DB2 for i")
 
-(defmethod driver/supports? [:db2 :set-timezone] [_ _] false)
+(defmethod driver/supports? [:iseries :set-timezone] [_ _] false)
 
-(defmethod driver/database-supports? [:db2 :now] [_driver _feat _db] true)
+(defmethod driver/database-supports? [:iseries :now] [_driver _feat _db] true)
 
-(defmethod sql.qp/honey-sql-version :db2
+(defmethod sql.qp/honey-sql-version :iseries
   [_driver]
   2)
 
-(defmethod driver/db-start-of-week :db2
+(defmethod driver/db-start-of-week :iseries
   [_]
   :sunday)
 
 ;; Needs improvements and tests
-(defmethod driver.common/current-db-time-date-formatters :db2 [_]
+(defmethod driver.common/current-db-time-date-formatters :iseries [_]
   (mapcat
    driver.common/create-db-time-formatters
    ["yyyy-MM-dd HH:mm:ss"
@@ -70,10 +70,10 @@
     "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"
     "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"
     "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ"]))
-(defmethod driver.common/current-db-time-native-query :db2 [_]
+(defmethod driver.common/current-db-time-native-query :iseries [_]
   "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1")
 
-(defmethod driver/current-db-time :db2 [& args]
+(defmethod driver/current-db-time :iseries [& args]
   (apply driver.common/current-db-time args))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -91,25 +91,25 @@
 
 ;; Wrap a HoneySQL datetime EXPRession in appropriate forms to cast/bucket it as UNIT.
 ;; See [this page](https://www.ibm.com/developerworks/data/library/techarticle/0211yip/0211yip3.html) for details on the functions we're using.
-(defmethod sql.qp/date [:db2 :default]        [_ _ expr] expr)
-(defmethod sql.qp/date [:db2 :second]         [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :second-of-minute] [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :minute]         [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :minute-of-hour] [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :hour]           [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :hour-of-day]    [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:db2 :day]            [_ _ expr] (trunc :dd expr))
-(defmethod sql.qp/date [:db2 :day-of-month]   [_ _ expr] (trunc :day expr))
-(defmethod sql.qp/date [:db2 :week] [driver _ expr] (sql.qp/adjust-start-of-week driver (partial trunc :day) expr))
-(defmethod sql.qp/date [:db2 :month]          [_ _ expr] (trunc :month expr))
-(defmethod sql.qp/date [:db2 :month-of-year]  [_ _ expr] (trunc :month expr))
-(defmethod sql.qp/date [:db2 :quarter]        [_ _ expr] (trunc :q expr))
-(defmethod sql.qp/date [:db2 :year]           [_ _ expr] (trunc :year expr))
-(defmethod sql.qp/date [:db2 :week-of-year]   [_ _ expr] [:week expr])
-(defmethod sql.qp/date [:db2 :day-of-week]     [_ _ expr] [:dayofweek expr])
-(defmethod sql.qp/date [:db2 :day-of-year]    [_ _ expr] [:dayofyear expr])
+(defmethod sql.qp/date [:iseries :default]        [_ _ expr] expr)
+(defmethod sql.qp/date [:iseries :second]         [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :second-of-minute] [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :minute]         [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :minute-of-hour] [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :hour]           [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :hour-of-day]    [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :day]            [_ _ expr] (trunc :dd expr))
+(defmethod sql.qp/date [:iseries :day-of-month]   [_ _ expr] (trunc :day expr))
+(defmethod sql.qp/date [:iseries :week] [driver _ expr] (sql.qp/adjust-start-of-week driver (partial trunc :day) expr))
+(defmethod sql.qp/date [:iseries :month]          [_ _ expr] (trunc :month expr))
+(defmethod sql.qp/date [:iseries :month-of-year]  [_ _ expr] (trunc :month expr))
+(defmethod sql.qp/date [:iseries :quarter]        [_ _ expr] (trunc :q expr))
+(defmethod sql.qp/date [:iseries :year]           [_ _ expr] (trunc :year expr))
+(defmethod sql.qp/date [:iseries :week-of-year]   [_ _ expr] [:week expr])
+(defmethod sql.qp/date [:iseries :day-of-week]     [_ _ expr] [:dayofweek expr])
+(defmethod sql.qp/date [:iseries :day-of-year]    [_ _ expr] [:dayofyear expr])
 
-(defmethod sql.qp/add-interval-honeysql-form :db2 [_ hsql-form amount unit]
+(defmethod sql.qp/add-interval-honeysql-form :iseries [_ hsql-form amount unit]
   (h2x/+ (h2x/->timestamp hsql-form) (case unit
     :second  (hx/raw (format "%d seconds" (int amount)))
     :minute  (hx/raw (format "%d minutes" (int amount)))
@@ -121,24 +121,24 @@
     :year    (hx/raw (format "%d years" (int amount)))
   )))
 
-(defmethod sql.qp/unix-timestamp->honeysql [:db2 :seconds] [_ _ expr]
+(defmethod sql.qp/unix-timestamp->honeysql [:iseries :seconds] [_ _ expr]
   (h2x/+ (hx/raw "timestamp('1970-01-01 00:00:00')") (hx/raw (format "%d seconds" (int expr))))
 
-(defmethod sql.qp/unix-timestamp->honeysql [:db2 :milliseconds] [driver _ expr]
+(defmethod sql.qp/unix-timestamp->honeysql [:iseries :milliseconds] [driver _ expr]
   (h2x/+ (hx/raw "timestamp('1970-01-01 00:00:00')") (hx/raw (format "%d seconds" (int (h2x// expr 1000)))))))
 
-(defmethod sql.qp/->honeysql [:db2 Boolean]
+(defmethod sql.qp/->honeysql [:iseries Boolean]
   [_ bool]
   (if bool 1 0))
 
 ;; ;; Use LIMIT OFFSET support DB2 v9.7 https://www.ibm.com/developerworks/community/blogs/SQLTips4DB2LUW/entry/limit_offset?lang=en
 ;; ;; Maybe it could not to be necessary with the use of DB2_COMPATIBILITY_VECTOR
-;; (defmethod sql.qp/apply-top-level-clause [:db2 :limit]
+;; (defmethod sql.qp/apply-top-level-clause [:iseries :limit]
 ;;   [_ _ honeysql-query {value :limit}]
 ;;   (merge honeysql-query
 ;;          (hx/raw (format "FETCH FIRST %d ROWS ONLY" value))))
 
-;; (defmethod sql.qp/apply-top-level-clause [:db2 :page]
+;; (defmethod sql.qp/apply-top-level-clause [:iseries :page]
 ;;   [driver _ honeysql-query {{:keys [items page]} :page}]
 ;;   (let [offset (* (dec page) items)]
 ;;     (if (zero? offset)
@@ -156,30 +156,30 @@
 ;;; |                                           metabase.driver.sql date workarounds                                 |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defmethod sql.qp/->honeysql [:db2 Timestamp]
+(defmethod sql.qp/->honeysql [:iseries Timestamp]
   [_ date]
   		(h2x/->timestamp (t/format "yyyy-MM-dd HH:mm:ss" date)))
 
 (defn- zero-time? [t]
   (= (t/local-time t) (t/local-time 0)))
 
-(defmethod sql.qp/->honeysql [:db2 LocalDate]
+(defmethod sql.qp/->honeysql [:iseries LocalDate]
   [_ t]
   [:date (h2x/literal (du/format-sql t))])
 
-(defmethod sql.qp/->honeysql [:db2 LocalTime]
+(defmethod sql.qp/->honeysql [:iseries LocalTime]
   [_ t]
   [:time (h2x/literal (du/format-sql t))])
 
-;; (defmethod sql.qp/->honeysql [:db2 OffsetTime]
+;; (defmethod sql.qp/->honeysql [:iseries OffsetTime]
 ;;   [_ t]
 ;;   [:time (h2x/literal (du/format-sql t))])
 
-(defmethod sql.qp/->honeysql [:db2 Boolean]
+(defmethod sql.qp/->honeysql [:iseries Boolean]
   [_ bool]
   (if bool 1 0))
 
-(defmethod sql.qp/->honeysql [:db2 :concat]
+(defmethod sql.qp/->honeysql [:iseries :concat]
   [driver [_ & args]]
   (into
    [:||]
@@ -189,7 +189,7 @@
 ;;; |                                         metabase.driver.sql-jdbc impls                                         |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defmethod sql-jdbc.conn/connection-details->spec :db2
+(defmethod sql-jdbc.conn/connection-details->spec :iseries
   [_ {:keys [host port dbname]
       :or   {host "localhost", port 3386, dbname ""}
       :as   details}]
@@ -199,13 +199,13 @@
          (dissoc details :host :port :dbname))
   (sql-jdbc.common/handle-additional-options details, :separator-style :semicolon)))
 
-(defmethod driver/can-connect? :db2 [driver details]
+(defmethod driver/can-connect? :iseries [driver details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel! details))]
     (= 1 (first (vals (first (jdbc/query connection ["VALUES 1"])))))))
 
 ;; Mappings for DB2 types to Metabase types.
-;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmdb2/ibmdb2_data_types.htm
-(defmethod sql-jdbc.sync/database-type->base-type :db2 [_ database-type]
+;; See the list here: https://docs.tibco.com/pub/spc/4.0.0/doc/html/ibmiseries/ibmiseries_data_types.htm
+(defmethod sql-jdbc.sync/database-type->base-type :iseries [_ database-type]
   ({:BIGINT       :type/BigInteger
     :BINARY       :type/*
     :BLOB         :type/*
@@ -239,7 +239,7 @@
     (keyword "VARCHAR () FOR BIT DATA")   :type/*
     (keyword "VARCHAR() FOR BIT DATA")    :type/*} database-type))
 
-(defmethod sql-jdbc.sync/excluded-schemas :db2 [_]
+(defmethod sql-jdbc.sync/excluded-schemas :iseries [_]
   #{"SQLJ"
     "QSYS"
     "QSYS2"
@@ -257,15 +257,15 @@
     "QHTTPSVR"
     "QUSRSYS"})
 
-(defmethod sql-jdbc.execute/set-timezone-sql :db2 [_]
+(defmethod sql-jdbc.execute/set-timezone-sql :iseries [_]
   "SET SESSION TIME ZONE = %s")
 
-(defmethod sql-jdbc.sync/have-select-privilege? :db2 [driver conn table-schema table-name]
+(defmethod sql-jdbc.sync/have-select-privilege? :iseries [driver conn table-schema table-name]
   true)
 
 ;; Overridden to have access to the database with the configured property dbnames (inclusion list)
 ;; which will be used to filter the schemas.
-(defmethod driver/describe-database :db2
+(defmethod driver/describe-database :iseries
   [_ database]
   {:tables
    (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
