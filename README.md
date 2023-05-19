@@ -5,7 +5,7 @@ DRIVER_PATH
 
 ## Command - run in local mapped metabase repo
 clojure \
-  -Sdeps "{:aliases {:db2 {:extra-deps {com.metabase/db2-driver {:local/root \"$DRIVER_PATH\"}}}}}"  \
-  -X:build:db2 \
+  -Sdeps "{:aliases {:iseries {:extra-deps {com.metabase/iseries-driver {:local/root \"$DRIVER_PATH\"}}}}}"  \
+  -X:build:iseries \
   build-drivers.build-driver/build-driver! \
-  "{:driver :db2, :project-dir \"$DRIVER_PATH\", :target-dir \"$DRIVER_PATH/target\"}"
+  "{:driver :iseries, :project-dir \"$DRIVER_PATH\", :target-dir \"$DRIVER_PATH/target\"}"
