@@ -17,12 +17,12 @@ driver:
     - host
     - merge:
         - port
-        - default: 8471
+        - default: 3386
     - merge:
         - dbname
         - name: db
           display-name: Database name
-          placeholder: Database Name
+          placeholder: SCHEMA NAME
     - user
     - password
     - ssh-tunnel
