@@ -270,17 +270,12 @@
 (defmethod sql-jdbc.sync/have-select-privilege? :iseries [driver conn table-schema table-name]
   true)
 
-(defn- materialized-views
-  "Fetch the Materialized Views DB2 for i"
-  [database]  
-  (log/info (trs "Fetch the Materialized Views db2 for i"))
-  (try (set (jdbc/query (sql-jdbc.conn/db->pooled-connection-spec database)
-      ["select schema, table, case when table_text = '' then null else table_text end as description from etllib.metabase_table_metadata allowed join qsys2.systables on schema = table_schema and table_name = table"]))
-       (catch Throwable e
-         (log/error e (trs "Failed to fetch materialized views for DB2 for i")))))
-
 (defmethod driver/describe-database :iseries
-  [driver database]
-  (-> (update :tables set/union (materialized-views database))      
-      ;;(log/info (trs "tables apres materialized: {0}" (materialized-views database)))
-      ))
+  [_ database]
+  {:tables
+   (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
+     (set
+      (for [{:keys [schema, table, description ]} (jdbc/query {:connection conn} ["select schema, table, coalesce(case when table_text = '' then null else table_text end,'') as description from etllib.metabase_table_metadata allowed left join qsys2.systables on schema = table_schema and table_name = table"])]
+        {:name   (not-empty table) ; column name differs depending on server (SparkSQL, hive, Impala)
+         :schema (not-empty schema)
+         :description (not-empty description)})))})
