@@ -47,7 +47,7 @@
 
 (defmethod driver/supports? [:iseries :set-timezone] [_ _] false)
 
-(defmethod driver/database-supports? [:iseries :now] [_driver _feat _db] true)
+(defmethod driver/database-supports? [:iseries :now] [_driver _feat _db] false)
 
 (defmethod sql.qp/honey-sql-version :iseries
   [_driver]
@@ -92,6 +92,21 @@
 (defn- trunc [format-str expr]
   [:trunc_timestamp expr (h2x/literal format-str)])
 
+(def ^:private timestamp-types
+  #{"timestamp"})
+
+(defn- cast-to-timestamp-if-needed
+  "If `hsql-form` isn't already one of the [[timestamp-types]], cast it to `timestamp`."
+  [hsql-form]
+  (h2x/cast-unless-type-in "timestamp" timestamp-types hsql-form))
+
+(defn- cast-to-date-if-needed
+  "If `hsql-form` isn't already one of the [[timestamp-types]] *or* `date`, cast it to `date`."
+  [hsql-form]
+  (h2x/cast-unless-type-in "date" (conj timestamp-types "date") hsql-form))
+
+(def ^:private ->date     (partial conj [:date]))
+
 ;; Wrap a HoneySQL datetime EXPRession in appropriate forms to cast/bucket it as UNIT.
 ;; See [this page](https://www.ibm.com/developerworks/data/library/techarticle/0211yip/0211yip3.html) for details on the functions we're using.
 (defmethod sql.qp/date [:iseries :default]        [_ _ expr] expr)
@@ -101,8 +116,8 @@
 (defmethod sql.qp/date [:iseries :minute-of-hour] [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
 (defmethod sql.qp/date [:iseries :hour]           [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
 (defmethod sql.qp/date [:iseries :hour-of-day]    [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
-(defmethod sql.qp/date [:iseries :day]            [_ _ expr] (trunc :dd expr))
-(defmethod sql.qp/date [:iseries :day-of-month]   [_ _ expr] (trunc :day expr))
+(defmethod sql.qp/date [:iseries :day]            [_ _ expr] (->date expr))
+(defmethod sql.qp/date [:iseries :day-of-month]   [_ _ expr] (->date expr))
 (defmethod sql.qp/date [:iseries :week] [driver _ expr] (sql.qp/adjust-start-of-week driver (partial trunc :day) expr))
 (defmethod sql.qp/date [:iseries :month]          [_ _ expr] (trunc :month expr))
 (defmethod sql.qp/date [:iseries :month-of-year]  [_ _ expr] (trunc :month expr))
@@ -113,7 +128,7 @@
 (defmethod sql.qp/date [:iseries :day-of-year]    [_ _ expr] [:dayofyear expr])
 
 (defmethod sql.qp/add-interval-honeysql-form :iseries [_ hsql-form amount unit]
-  (h2x/+ (h2x/->timestamp hsql-form) (case unit
+  (h2x/+ (cast-to-timestamp-if-needed hsql-form) (case unit
     :second  (hx/raw (format "%d seconds" (int amount)))
     :minute  (hx/raw (format "%d minutes" (int amount)))
     :hour    (hx/raw (format "%d hours" (int amount)))
