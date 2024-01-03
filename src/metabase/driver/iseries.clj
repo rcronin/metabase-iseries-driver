@@ -23,7 +23,6 @@
              [sync :as sql-jdbc.sync]]
             [metabase.driver.sql-jdbc.execute.legacy-impl :as legacy]
             [metabase.util.honey-sql-2 :as h2x]
-            [metabase.util.honeysql-extensions :as hx]
             [metabase.util.date-2 :as du]
             [metabase.util.ssh :as ssh]
             [metabase.util.i18n :refer [trs]]
@@ -56,28 +55,6 @@
 (defmethod driver/db-start-of-week :iseries
   [_]
   :sunday)
-
-;; Needs improvements and tests
-(defmethod driver.common/current-db-time-date-formatters :iseries [_]
-  (mapcat
-   driver.common/create-db-time-formatters
-   ["yyyy-MM-dd HH:mm:ss"
-    "yyyy-MM-dd HH:mm:ss.SSS"
-    "yyyy-MM-dd HH:mm:ss.SSSSS"
-    "yyyy-MM-dd'T'HH:mm:ss.SSS"
-    "yyyy-MM-dd HH:mm:ss.SSSZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-    "yyyy-MM-dd HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZ"
-    "yyyy-MM-dd HH:mm:ss.SSSSSSSSSZZ"
-    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSZZ"]))
-(defmethod driver.common/current-db-time-native-query :iseries [_]
-  "SELECT TO_CHAR(CURRENT TIMESTAMP, 'yyyy-MM-dd HH:mm:ss') FROM SYSIBM.SYSDUMMY1")
-
-(defmethod driver/current-db-time :iseries [& args]
-  (apply driver.common/current-db-time args))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                           metabase.driver.sql impls                                            |
@@ -129,21 +106,21 @@
 
 (defmethod sql.qp/add-interval-honeysql-form :iseries [_ hsql-form amount unit]
   (h2x/+ (cast-to-timestamp-if-needed hsql-form) (case unit
-    :second  (hx/raw (format "%d seconds" (int amount)))
-    :minute  (hx/raw (format "%d minutes" (int amount)))
-    :hour    (hx/raw (format "%d hours" (int amount)))
-    :day     (hx/raw (format "%d days" (int amount)))
-    :week    (hx/raw (format "%d days" (* amount 7)))
-    :month   (hx/raw (format "%d months" (int amount)))
-    :quarter (hx/raw (format "%d months" (* amount 3)))
-    :year    (hx/raw (format "%d years" (int amount)))
+    :second  [:raw (format "%d seconds" (int amount))]
+    :minute  [:raw (format "%d minutes" (int amount))]
+    :hour    [:raw (format "%d hours" (int amount))]
+    :day     [:raw (format "%d days" (int amount))]
+    :week    [:raw (format "%d days" (* amount 7))]
+    :month   [:raw (format "%d months" (int amount))]
+    :quarter [:raw (format "%d months" (* amount 3))]
+    :year    [:raw (format "%d years" (int amount))]
   )))
 
 (defmethod sql.qp/unix-timestamp->honeysql [:iseries :seconds] [_ _ expr]
-  (h2x/+ (hx/raw "timestamp('1970-01-01 00:00:00')") (hx/raw (format "%d seconds" (int expr))))
+  (h2x/+ [:raw "timestamp('1970-01-01 00:00:00')"] [:raw (format "%d seconds" (int expr))]))
 
 (defmethod sql.qp/unix-timestamp->honeysql [:iseries :milliseconds] [driver _ expr]
-  (h2x/+ (hx/raw "timestamp('1970-01-01 00:00:00')") (hx/raw (format "%d seconds" (int (h2x// expr 1000)))))))
+  (h2x/+ [:raw "timestamp('1970-01-01 00:00:00')"] [:raw (format "%d seconds" (int (h2x// expr 1000)))]))
 
 (defmethod sql.qp/->honeysql [:iseries Boolean]
   [_ bool]
@@ -181,6 +158,10 @@
   (into
    [:||]
    (mapv (partial sql.qp/->honeysql driver) args)))
+
+(defmethod sql.qp/current-datetime-honeysql-form :iseries
+  [_]
+  (h2x/with-database-type-info [:raw "CURRENT_TIMESTAMP"] "timestamp"))
 
 (defmethod sql-jdbc.execute/read-column-thunk [:iseries Types/DATE]
   [_driver ^ResultSet rs _rsmeta ^Integer i]
