@@ -44,9 +44,12 @@
 
 (defmethod driver/display-name :iseries [_] "DB2 for i")
 
-(defmethod driver/supports? [:iseries :set-timezone] [_ _] false)
+;; (defmethod driver/supports? [:iseries :set-timezone] [_ _] false)
 
-(defmethod driver/database-supports? [:iseries :now] [_driver _feat _db] false)
+;; (defmethod driver/database-supports? [:iseries :now] [_driver _feat _db] false)
+(doseq [[feature supported?] {:set-timezone         false
+                              :now                  false}]
+  (defmethod driver/database-supports? [:iseries feature] [_driver _feature _db] supported?))
 
 (defmethod sql.qp/honey-sql-version :iseries
   [_driver]
