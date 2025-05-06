@@ -1,4 +1,4 @@
-(ns metabase.driver.ibmi
+(ns metabase.driver.iseries
   "Metabase IBM DB2 for IBM i Driver"
   (:require
    [clojure.java.jdbc :as jdbc]
