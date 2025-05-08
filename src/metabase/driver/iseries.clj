@@ -31,16 +31,10 @@
 
 (driver/register! :iseries, :parent :sql-jdbc)
 
-(doseq [[feature supported?] {:connection-impersonation  false 
-                              :describe-fields           true 
-                              :describe-fks              true 
-                              :native-parameters         false
-                              :upload-with-auto-pk       true
-                              :uuid-type                 false
-                              :identifiers-with-spaces   false
-                              :nested-field-columns      false
-                              :test/jvm-timezone-setting false}]
-  (defmethod driver/database-supports? [:iseries feature] [_driver _feat _db] supported?))
+(doseq [[feature supported?] {:set-timezone         false
+                              :describe-fields      false 
+                              :now                  false}]
+  (defmethod driver/database-supports? [:iseries feature] [_driver _feature _db] supported?))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
@@ -130,19 +124,6 @@
   		(if length
     	[:substr (sql.qp/->honeysql driver arg) (sql.qp/->honeysql driver start) [:min [:length (sql.qp/->honeysql driver arg)] (sql.qp/->honeysql driver length)]]
     	[:substr (sql.qp/->honeysql driver arg) (sql.qp/->honeysql driver start)]))
-
-
-;; Use LIMIT OFFSET support DB2 v9.7 https://www.ibm.com/developerworks/community/blogs/SQLTips4DB2LUW/entry/limit_offset?lang=en
-;; Maybe it could not to be necessary with the use of DB2_COMPATIBILITY_VECTOR
-(defmethod sql.qp/apply-top-level-clause [:iseries :limit]
-  [_ _ honeysql-query {value :limit}]
-  {:select [:*]
-   ;; if `honeysql-query` doesn't have a `SELECT` clause yet (which might be the case when using a source query) fall
-   ;; back to including a `SELECT *` just to make sure a valid query is produced
-   :from   [(-> (merge {:select [:*]}
-                       honeysql-query)
-                (update :select sql.u/select-clause-deduplicate-aliases))]
-   :fetch  [:raw value]})
 
 (defmethod sql.qp/apply-top-level-clause [:iseries :page]
   [driver _ honeysql-query {{:keys [items page]} :page}]
@@ -378,33 +359,58 @@
   "SET SESSION TIME ZONE = %s")
 
 (defmethod driver/describe-database :iseries
-  [_ database]
+  [driver database]
   {:tables
-   (with-open [conn (jdbc/get-connection (sql-jdbc.conn/db->pooled-connection-spec database))]
-     (set
-      (for [{:keys [schema, table, description ]} (jdbc/query {:connection conn} ["select schema, table, coalesce(case when table_text = '' then null else table_text end,'') as description from etllib.metabase_table_metadata allowed left join qsys2.systables on schema = table_schema and table_name = table"])]
-        {:name   (not-empty table) ; column name differs depending on server (SparkSQL, hive, Impala)
-         :schema (not-empty schema)
-         :description (not-empty description)})))})
+   (sql-jdbc.execute/do-with-connection-with-options
+     driver database nil
+     (fn [^java.sql.Connection conn]
+       (with-open [stmt (.prepareStatement conn "select schema, table from etllib.metabase_table_metadata allowed left join qsys2.systables on schema = table_schema and table_name = table")]
+         (with-open [rset (.executeQuery stmt)]
+           (loop [tables []]
+             (if (.next rset)
+               (recur (conj tables {:name   (.getString rset 2)
+                                    :schema (.getString rset 1)}))
+               tables))))))})
+
+(defmethod sql-jdbc.sync/describe-fields-sql :iseries
+  [driver database]
+  (sql-jdbc.execute/do-with-connection-with-options
+   driver database nil
+   (fn [^java.sql.Connection conn]
+     ;; Retrieve columns from DB2's metadata
+     (let [metadata (.getMetaData conn)
+           result-set (.getColumns metadata nil nil "%" nil)]
+       (with-open [rset result-set]
+         ;; Process each field (column)
+         (loop [fields []]
+           (if (.next rset)
+             (let [table-name (.getString rset "TABLE_NAME")
+                   schema-name (.getString rset "TABLE_SCHEM")
+                   column-name (.getString rset "COLUMN_NAME")
+                   data-type (.getInt rset "DATA_TYPE") ; SQL type code
+                   type-name (.getString rset "TYPE_NAME") ; DB2-specific type
+                   column-size (.getInt rset "COLUMN_SIZE")
+                   nullable (case (.getInt rset "NULLABLE")
+                              java.sql.DatabaseMetaData/columnNullable true
+                              java.sql.DatabaseMetaData/columnNoNulls false
+                              nil)
+                   remarks (.getString rset "REMARKS")
+                   auto-increment (.getString rset "IS_AUTOINCREMENT")]
+               (recur (conj fields
+                            {:name column-name
+                             :database-type type-name
+                             :base-type (sql-jdbc.sync/database-type->base-type driver data-type type-name)
+                             :database-position (.getInt rset "ORDINAL_POSITION")
+                             :field-comment remarks
+                             :database-is-auto-increment (.equalsIgnoreCase "YES" auto-increment)
+                             :database-required (not nullable)
+                             :table-name table-name
+                             :table-schema schema-name})))
+             ;; Return the processed fields
+             fields)))))))
 
 
 (defmethod sql-jdbc.execute/set-timezone-sql :iseries
   [_]
   "SET SESSION TIME ZONE = %s;")
-
-(defmethod driver/db-default-timezone :iseries
-  [driver database]
-  (sql-jdbc.execute/do-with-connection-with-options
-   driver database nil
-   (fn [^java.sql.Connection conn]
-     (with-open [stmt (.prepareStatement conn "SELECT CURRENT_TIMEZONE FROM SYSIBM.SYSDUMMY1")
-                 rset (.executeQuery stmt)]
-       (when (.next rset)
-         (let [db2-offset (.getLong rset 1) ; Retrieve as Long
-               ;; Convert Long to string and format as ISO-8601
-               formatted-offset (format "%+03d:%02d"
-                                        (quot db2-offset 10000) ; Hours
-                                        (mod (quot db2-offset 100) 100)) ; Minutes
-               zone-offset (java.time.ZoneOffset/of formatted-offset)]
-           zone-offset)))))) ; Return ZoneOffset
 
