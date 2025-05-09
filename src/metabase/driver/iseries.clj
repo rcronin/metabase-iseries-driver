@@ -70,38 +70,46 @@
 ;;; |                                           metabase.driver.sql impls                                            |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-;; Wrap a HoneySQL datetime EXPRession in appropriate forms to cast/bucket it as UNIT.
-(defmethod sql.qp/date [:iseries :default]         [_ _ expr] expr)
-(defmethod sql.qp/date [:iseries :minute]          [_ _ expr] (h2x/minute expr))
-;;(defmethod sql.qp/date [:iseries :minute-of-hour]  [_ _ expr] (::h2x/extract :minute expr))
-(defmethod sql.qp/date [:iseries :hour]            [_ _ expr] (h2x/hour expr))
-;;(defmethod sql.qp/date [:iseries :hour-of-day]     [_ _ expr] (::h2x/extract :hour expr))
-(defmethod sql.qp/date [:iseries :day]             [_ _ expr] expr) 
-(defmethod sql.qp/date [:iseries :day-of-month]    [_ _ expr] (::h2x/extract :day expr))
-(defmethod sql.qp/date [:iseries :week]
-  [_ _ expr]
-  (let [expr-sql (first (sql/format expr {:nested true}))]
-    [:- expr
-     [:raw (format "MOD(DAYOFWEEK(%s) + 5, 7) days" expr-sql)]]))
-(defmethod sql.qp/date [:iseries :month]           [_ _ expr] [:first_day expr])
-;;(defmethod sql.qp/date [:iseries :month-of-year]   [_ _ expr] (::h2x/extract :month expr))
-(defmethod sql.qp/date [:iseries :quarter]         [_ _ expr] (h2x/quarter expr))
-(defmethod sql.qp/date [:iseries :year]            [_ _ expr] (h2x/year expr))
-;;(defmethod sql.qp/date [:iseries :week-of-year]    [_ _ expr] (h2x/week expr))
-(defmethod sql.qp/date [:iseries :day-of-week]     [_ _ expr] (::h2x/extract :dayofweek expr))
-(defmethod sql.qp/date [:iseries :day-of-year]     [_ _ expr] (::h2x/extract :dayofyear expr))
-;;(defmethod sql.qp/date [:iseries :quarter-of-year] [_ _ expr] (::h2x/extract :quarter expr))
-;;(defmethod sql.qp/date [:iseries :year-of-era]      [_ _ expr] (::h2x/year expr))
+(defn- trunc [format-str expr]
+  [:trunc_timestamp expr (h2x/literal format-str)])
+
+(def ^:private timestamp-types
+  #{"timestamp"})
+
+(defn- cast-to-timestamp-if-needed
+  "If `hsql-form` isn't already one of the [[timestamp-types]], cast it to `timestamp`."
+  [hsql-form]
+  (h2x/cast-unless-type-in "timestamp" timestamp-types hsql-form))
+
+(def ^:private ->date     (partial conj [:date]))
+
+(defmethod sql.qp/date [:iseries :default]        [_ _ expr] expr)
+(defmethod sql.qp/date [:iseries :second]         [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :second-of-minute] [_ _ expr] [::h2x/extract :second (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :minute]         [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :minute-of-hour] [_ _ expr] [::h2x/extract :minute (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :hour]           [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :hour-of-day]    [_ _ expr] [::h2x/extract :hour (h2x/->timestamp expr)])
+(defmethod sql.qp/date [:iseries :day]            [_ _ expr] (->date expr))
+(defmethod sql.qp/date [:iseries :day-of-month]   [_ _ expr] (->date expr))
+(defmethod sql.qp/date [:iseries :week] [driver _ expr] (sql.qp/adjust-start-of-week driver (partial trunc :day) expr))
+(defmethod sql.qp/date [:iseries :month]          [_ _ expr] (trunc :month expr))
+(defmethod sql.qp/date [:iseries :month-of-year]  [_ _ expr] (trunc :month expr))
+(defmethod sql.qp/date [:iseries :quarter]        [_ _ expr] (trunc :q expr))
+(defmethod sql.qp/date [:iseries :year]           [_ _ expr] (trunc :year expr))
+(defmethod sql.qp/date [:iseries :week-of-year]   [_ _ expr] [:week expr])
+(defmethod sql.qp/date [:iseries :day-of-week]     [_ _ expr] [:dayofweek expr])
+(defmethod sql.qp/date [:iseries :day-of-year]    [_ _ expr] [:dayofyear expr])
 
 (defmethod sql.qp/add-interval-honeysql-form :iseries [_ hsql-form amount unit]
-  (h2x/+ (h2x/->timestamp hsql-form) (case unit
+  (h2x/+ (cast-to-timestamp-if-needed hsql-form) (case unit
     :second  [:raw (format "%d seconds" (int amount))]
     :minute  [:raw (format "%d minutes" (int amount))]
     :hour    [:raw (format "%d hours" (int amount))]
     :day     [:raw (format "%d days" (int amount))]
-    :week    [:raw (format "%d days" (int (* amount 7)))]
+    :week    [:raw (format "%d days" (* amount 7))]
     :month   [:raw (format "%d months" (int amount))]
-    :quarter [:raw (format "%d months" (int (* amount 3)))]
+    :quarter [:raw (format "%d months" (* amount 3))]
     :year    [:raw (format "%d years" (int amount))]
   )))
 
